@@ -1,0 +1,510 @@
+import streamlit as st
+from streamlit_drawable_canvas import st_canvas
+from datetime import datetime, timedelta, date
+import sqlite3
+import pandas as pd
+import os
+from PIL import Image
+import numpy as np
+import qrcode
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
+from reportlab.lib import colors  # IMPORTANTE PARA LOS COLORES
+
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(page_title="Gestión Mantención", layout="wide")
+
+# --- RUTAS (USANDO RUTAS ABSOLUTAS PARA EVITAR ERRORES EN WINDOWS) ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(BASE_DIR)
+
+DB_PATH = os.path.join(ROOT_DIR, 'mantenimiento_taller.db')
+CARPETA_FOTOS = os.path.join(ROOT_DIR, "img_maquinas")
+CARPETA_FIRMAS = os.path.join(ROOT_DIR, "firmas")
+CARPETA_INFORMES = os.path.join(ROOT_DIR, "informes_checklist")
+CARPETA_EVIDENCIAS = os.path.join(ROOT_DIR, "evidencias_externas")
+CARPETA_QRS = os.path.join(ROOT_DIR, "qrs_nuevos")
+CARPETA_BIBLIOTECA = os.path.join(ROOT_DIR, "biblioteca_maquinas")
+
+for c in [CARPETA_FOTOS, CARPETA_FIRMAS, CARPETA_INFORMES, CARPETA_EVIDENCIAS, CARPETA_QRS, CARPETA_BIBLIOTECA]:
+    if not os.path.exists(c): os.makedirs(c)
+
+# --- BASE DE DATOS ---
+def init_db_mant():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS registros_inspeccion (
+        fecha_hora TEXT, maquina_id TEXT, operador TEXT, checks_ok TEXT, 
+        repuesto_necesario INTEGER, comentarios TEXT, firma_path TEXT, pdf_path TEXT
+    )''')
+    try: c.execute("ALTER TABLE registros_inspeccion ADD COLUMN pdf_path TEXT")
+    except: pass
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS maquinas (
+        id TEXT PRIMARY KEY, nombre TEXT, caracteristicas TEXT, frecuencia_mantencion TEXT, foto_path TEXT, modelo TEXT
+    )''')
+    try: c.execute("ALTER TABLE maquinas ADD COLUMN modelo TEXT")
+    except: pass
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS plan_externo (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, maquina_id TEXT, fecha_programada DATE, 
+        proveedor TEXT, estado TEXT, evidencia_pdf_path TEXT, fecha_realizacion DATE,
+        evaluacion_proveedor TEXT
+    )''')
+    try: c.execute("ALTER TABLE plan_externo ADD COLUMN evaluacion_proveedor TEXT")
+    except: pass
+    conn.commit(); conn.close()
+
+init_db_mant()
+
+# --- FUNCIONES DE SOPORTE ---
+def get_maquinas_lista():
+    conn = sqlite3.connect(DB_PATH)
+    try: df = pd.read_sql("SELECT id FROM maquinas ORDER BY id", conn); return df['id'].tolist()
+    except: return []
+    finally: conn.close()
+
+def obtener_puntos(maquina_id):
+    m = maquina_id.upper()
+    
+    # GRUPO C: MAQUINAS AVANZADAS
+    if "CNC" in m or "PLASMA" in m or "COILINE" in m:
+        puntos = ["Limpieza General", "Tablero Eléctrico y Cables", "PC y Pantalla", "Sist. Aire / Hidráulico", "Rieles/Guías", "Consumibles/Corte"]
+        if "COILINE" in m: puntos.append("Carretes y Rodamientos")
+        return puntos
+        
+    # GRUPO A: MAQUINAS MANUALES (Excluyendo eléctricas explícitas)
+    if ("RODONADORA" in m and "ELECTRICA" not in m) or "CILINDRADORA" in m:
+        return ["Limpieza General", "Engrase / Lubricación", "Estado de Rodillos/Cuchillos", "Ajuste Manivelas"]
+        
+    # GRUPO B: MAQUINAS ELÉCTRICAS (Resto)
+    return ["Limpieza General", "Tablero Eléctrico y Cables", "Funcionamiento Motor", "Rodamientos y Guías", "Protecciones Seguridad"]
+
+def ya_realizado_hoy(maquina_id):
+    conn = sqlite3.connect(DB_PATH)
+    hoy = datetime.now().strftime('%Y-%m-%d')
+    cursor = conn.cursor()
+    cursor.execute("SELECT operador, fecha_hora FROM registros_inspeccion WHERE maquina_id=? AND fecha_hora LIKE ?", (maquina_id, f"{hoy}%"))
+    dato = cursor.fetchone()
+    conn.close()
+    return dato
+
+def generar_pdf_checklist(maquina, operador, fecha_dt, checks, estado, obs, firma_path):
+    """Genera PDF con diseño profesional, colores y validación visual."""
+    nombre_seguro = "".join([c if c.isalnum() else "_" for c in maquina])
+    fecha_str_file = fecha_dt.strftime('%Y%m%d_%H%M%S')
+    nombre_pdf = f"{nombre_seguro}_{fecha_str_file}.pdf"
+    ruta_pdf = os.path.join(CARPETA_INFORMES, nombre_pdf)
+    
+    try:
+        c = canvas.Canvas(ruta_pdf, pagesize=letter)
+        w, h = letter
+        
+        # --- ENCABEZADO CON COLOR ---
+        c.setFillColor(colors.darkblue) # Barra Azul
+        c.rect(0, h - 80, w, 80, fill=1, stroke=0)
+        
+        c.setFillColor(colors.white) # Texto Blanco
+        c.setFont("Helvetica-Bold", 18)
+        c.drawCentredString(w/2, h - 50, "REPORTE DE INSPECCIÓN - TERMOFRIO SPA")
+        
+        # --- INFORMACIÓN GENERAL (Centrada) ---
+        c.setFillColor(colors.black)
+        y_info = h - 110
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(50, y_info, f"Máquina:")
+        c.setFont("Helvetica", 12)
+        c.drawString(120, y_info, maquina)
+        
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(350, y_info, f"Fecha:")
+        c.setFont("Helvetica", 12)
+        c.drawString(400, y_info, fecha_dt.strftime('%d/%m/%Y %H:%M'))
+        
+        y_info -= 20
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(50, y_info, f"Operador:")
+        c.setFont("Helvetica", 12)
+        c.drawString(120, y_info, operador)
+        
+        # --- ESTADO GRANDE Y COLOREADO ---
+        y_info -= 40
+        c.setFont("Helvetica-Bold", 16)
+        c.drawCentredString(w/2, y_info, "ESTADO FINAL DEL EQUIPO")
+        
+        y_info -= 25
+        c.setFont("Helvetica-Bold", 20)
+        if estado == "CON FALLA":
+            c.setFillColor(colors.red)
+            texto_estado = "⛔ NO OPERATIVO / CON FALLA"
+        else:
+            c.setFillColor(colors.green)
+            texto_estado = "✅ OPERATIVO"
+        
+        c.drawCentredString(w/2, y_info, texto_estado)
+        c.setFillColor(colors.black) # Volver a negro
+        
+        # Línea divisoria
+        c.setStrokeColor(colors.gray)
+        c.line(50, y_info - 20, w - 50, y_info - 20)
+        
+        # --- CHECKLIST (Puntos en Verde) ---
+        y = y_info - 50
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(50, y, "Puntos de Control Verificados:")
+        y -= 25
+        c.setFont("Helvetica", 11)
+        
+        for item in checks:
+            # Dibujar el [OK] en verde
+            c.setFillColor(colors.green)
+            c.drawString(60, y, "[OK]")
+            
+            # Dibujar el texto en negro
+            c.setFillColor(colors.black)
+            c.drawString(100, y, item)
+            
+            y -= 20
+            if y < 100: c.showPage(); y = h - 50
+            
+        # --- OBSERVACIONES ---
+        y -= 20
+        c.setFillColor(colors.darkblue)
+        c.rect(50, y, w-100, 20, fill=1, stroke=0)
+        c.setFillColor(colors.white)
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(60, y+5, "Observaciones Registradas")
+        
+        y -= 20
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica", 10)
+        if obs.strip():
+            text_object = c.beginText(60, y)
+            text_object.textLines(obs)
+            c.drawText(text_object)
+        else:
+            c.drawString(60, y, "Sin observaciones adicionales.")
+            
+        # --- FIRMA ---
+        y_firma = 100
+        c.setStrokeColor(colors.black)
+        c.line(w/2 - 100, y_firma, w/2 + 100, y_firma) # Línea de firma
+        
+        c.setFont("Helvetica", 10)
+        c.drawCentredString(w/2, y_firma - 15, f"Firmado digitalmente por: {operador}")
+        
+        if os.path.exists(firma_path):
+            try:
+                # Ajustar imagen centrada sobre la línea
+                c.drawImage(ImageReader(firma_path), w/2 - 60, y_firma + 5, width=120, height=60, mask='auto')
+            except:
+                c.drawString(w/2, y_firma + 20, "[Error cargando imagen firma]")
+            
+        c.save()
+        return ruta_pdf
+    except Exception as e:
+        print(f"Error generando PDF: {e}")
+        return None
+
+def calcular_estado_mes(fecha_prog, estado_db):
+    if estado_db == 'Realizado': return "✅ OK"
+    hoy = datetime.now().date()
+    try: prog = pd.to_datetime(fecha_prog).date()
+    except: return "⚪ Error"
+    if hoy > prog and (hoy.month > prog.month or hoy.year > prog.year): return "🔴 Vencido"
+    if hoy.month == prog.month and hoy.year == prog.year:
+        ultimo_dia = (prog.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        try: dias_habiles = np.busday_count(hoy, ultimo_dia)
+        except: dias_habiles = 30
+        return "🟠 ALERTA (2 Sem)" if dias_habiles <= 10 else "🔵 En Plazo"
+    return "📅 Prog."
+
+MESES_NOMBRES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+
+# --- CONTROL DE ACCESO ---
+try: param_maquina = st.query_params.get("maquina", None)
+except: param_maquina = None
+estoy_logueado = 'usuario_termofrio' in st.session_state and st.session_state.usuario_termofrio
+
+modo_kiosco = False
+if param_maquina: modo_kiosco = True
+elif estoy_logueado: modo_kiosco = False
+else:
+    st.warning("⚠️ Acceso Restringido. Inicie sesión o escanee QR.")
+    st.stop()
+
+# ================= VISTA 1: MODO KIOSCO (CELULAR) =================
+if modo_kiosco:
+    st.info(f"📱 Check List: **{param_maquina}**")
+    datos_hoy = ya_realizado_hoy(param_maquina)
+    
+    if datos_hoy:
+        op_real, fecha_real = datos_hoy
+        hora_real = pd.to_datetime(fecha_real).strftime("%H:%M")
+        st.success(f"✅ **MÁQUINA YA INSPECCIONADA HOY**")
+        st.markdown(f"Revisada a las **{hora_real}** por **{op_real}**.")
+        st.stop()
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        foto = pd.read_sql("SELECT foto_path FROM maquinas WHERE id=?", conn, params=(param_maquina,))
+        conn.close()
+        if not foto.empty and foto.iloc[0]['foto_path'] and os.path.exists(foto.iloc[0]['foto_path']):
+            st.image(foto.iloc[0]['foto_path'], use_container_width=True)
+        
+        with st.form("frm_kiosco"):
+            op = st.selectbox("Operador:", ["Seleccionar...", "Julson Epingle", "Luis Zapata", "Mauricio Villanueva", "Oscar Fabres", "Lucio Zúñiga"])
+            puntos = obtener_puntos(param_maquina)
+            st.write("**Puntos de Control (Obligatorios):**")
+            estados_checks = {}
+            for p in puntos: estados_checks[p] = st.checkbox(p)
+            st.write("---")
+            estado_maq = st.radio("Estado Final:", ["Operativo", "CON FALLA"], index=None)
+            obs = st.text_area("Observaciones (Opcional):")
+            st.write("**Firma Digital:**")
+            canvas = st_canvas(stroke_width=2, height=100, key="f_kiosco", background_color="#fff")
+            
+            if st.form_submit_button("💾 Guardar Check List"):
+                todas_marcadas = all(estados_checks.values())
+                if op == "Seleccionar..." or not todas_marcadas or estado_maq is None or canvas.image_data is None:
+                    st.error("⚠️ Faltan datos obligatorios (Firma, Checks, Estado u Operador).")
+                else:
+                    # 1. Preparar Datos
+                    fecha_dt = datetime.now()
+                    fecha_str = fecha_dt.strftime("%Y-%m-%d %H:%M:%S")
+                    f_path = os.path.join(CARPETA_FIRMAS, f"{param_maquina}_{fecha_dt.strftime('%Y%m%d%H%M')}.png")
+                    Image.fromarray(canvas.image_data.astype(np.uint8)).save(f_path)
+                    
+                    txt_chk = " | ".join([f"{k}:OK" for k, v in estados_checks.items()])
+                    es_falla = 1 if estado_maq == "CON FALLA" else 0
+                    
+                    # 2. GUARDAR EN BD PRIMERO (Prioridad Crítica)
+                    try:
+                        conn = sqlite3.connect(DB_PATH); c=conn.cursor()
+                        # Guardamos con PDF vacío inicialmente
+                        c.execute("INSERT INTO registros_inspeccion (fecha_hora, maquina_id, operador, checks_ok, repuesto_necesario, comentarios, firma_path, pdf_path) VALUES (?,?,?,?,?,?,?,?)", 
+                                  (fecha_str, param_maquina, op, txt_chk, es_falla, obs, f_path, ""))
+                        conn.commit()
+                        last_id = c.lastrowid
+                        conn.close()
+                        
+                        # 3. ÉXITO VISUAL AL INSTANTE (Para el Operador)
+                        st.balloons()
+                        st.success("✅ **¡INSPECCIÓN GUARDADA EXITOSAMENTE!**")
+                        st.info("La información ha sido enviada al servidor central.")
+                        st.caption("Puede cerrar esta ventana.")
+                        
+                        # 4. GENERAR PDF EN SEGUNDO PLANO (Silencioso)
+                        try:
+                            pdf_path = generar_pdf_checklist(param_maquina, op, fecha_dt, puntos, estado_maq, obs, f_path)
+                            if pdf_path:
+                                conn = sqlite3.connect(DB_PATH); c=conn.cursor()
+                                c.execute("UPDATE registros_inspeccion SET pdf_path=? WHERE rowid=?", (pdf_path, last_id))
+                                conn.commit(); conn.close()
+                        except:
+                            # Si falla el PDF, no importa, la BD ya tiene los datos.
+                            print("Nota: PDF no generado automáticamente, pero datos guardados.")
+                            
+                    except Exception as e:
+                        st.error(f"Error Crítico Base de Datos: {e}")
+
+# ================= VISTA 2: MODO ADMIN (PC) =================
+else:
+    st.title("🔧 Gestión de Activos")
+    tab1, tab2, tab3 = st.tabs(["📝 Historial Check Lists (PDFs)", "🗓️ Plan Externo", "⚙️ Configuración"])
+
+    # --- TAB 1: GESTIÓN CHECK LISTS ---
+    with tab1:
+        st.header("🗂️ Archivo de Inspecciones")
+        col_f1, col_f2 = st.columns(2)
+        with col_f1: filtro_maq = st.selectbox("Filtrar por Máquina:", ["Todas"] + get_maquinas_lista())
+        with col_f2: filtro_fecha = st.date_input("Filtrar por Fecha:", value=None)
+        
+        conn = sqlite3.connect(DB_PATH)
+        query = "SELECT rowid, fecha_hora, maquina_id, operador, repuesto_necesario, pdf_path, checks_ok, comentarios, firma_path FROM registros_inspeccion"
+        condiciones = []; params = []
+        if filtro_maq != "Todas": condiciones.append("maquina_id = ?"); params.append(filtro_maq)
+        if filtro_fecha: condiciones.append("fecha_hora LIKE ?"); params.append(f"{filtro_fecha.strftime('%Y-%m-%d')}%")
+        if condiciones: query += " WHERE " + " AND ".join(condiciones)
+        query += " ORDER BY fecha_hora DESC"
+        
+        df_hist = pd.read_sql(query, conn, params=params)
+        conn.close()
+        
+        c_izq, c_der = st.columns([2, 1])
+        with c_izq:
+            if not df_hist.empty:
+                df_hist['Estado'] = df_hist['repuesto_necesario'].apply(lambda x: "🔴 FALLA" if x==1 else "🟢 OK")
+                df_hist['Fecha'] = pd.to_datetime(df_hist['fecha_hora']).dt.strftime('%d-%m-%Y %H:%M')
+                st.info("Seleccione una fila para gestionar el PDF.")
+                event = st.dataframe(df_hist[['Fecha', 'maquina_id', 'operador', 'Estado']], use_container_width=True, hide_index=True, selection_mode="single-row", on_select="rerun")
+                seleccion = event.selection.rows
+            else: st.warning("Sin registros."); seleccion = []
+
+        with c_der:
+            st.subheader("📥 Gestión PDF")
+            if seleccion:
+                idx = seleccion[0]; registro = df_hist.iloc[idx]; ruta_pdf = registro['pdf_path']
+                st.write(f"**Registro:** {registro['maquina_id']}")
+                st.write(f"**Fecha:** {registro['Fecha']}")
+                
+                # Botón de Descarga
+                if ruta_pdf and os.path.exists(ruta_pdf):
+                    with open(ruta_pdf, "rb") as f:
+                        st.download_button("⬇️ DESCARGAR PDF", data=f, file_name=os.path.basename(ruta_pdf), mime="application/pdf", type="primary")
+                else: 
+                    st.warning("⚠️ PDF no disponible.")
+                    if st.button("🔄 REGENERAR PDF"):
+                        # Lógica de regeneración manual para el admin
+                        f_dt = pd.to_datetime(registro['fecha_hora'])
+                        # Reconstruir lista de checks (quitando el :OK)
+                        checks_limpios = [c.split(":")[0] for c in registro['checks_ok'].split(" | ")]
+                        est_str = "CON FALLA" if registro['repuesto_necesario'] == 1 else "Operativo"
+                        
+                        new_pdf = generar_pdf_checklist(registro['maquina_id'], registro['operador'], f_dt, checks_limpios, est_str, registro['comentarios'], registro['firma_path'])
+                        
+                        if new_pdf:
+                            conn = sqlite3.connect(DB_PATH); c=conn.cursor()
+                            c.execute("UPDATE registros_inspeccion SET pdf_path=? WHERE rowid=?", (new_pdf, int(registro['rowid'])))
+                            conn.commit(); conn.close()
+                            st.success("Regenerado OK."); st.rerun()
+            else: st.caption("👈 Seleccione un registro.")
+                
+        st.divider()
+        st.markdown("### ➕ Ingreso Manual (Admin)")
+        with st.expander("Realizar Check List desde PC"):
+            maq_manual = st.selectbox("Máquina:", ["Seleccionar..."] + get_maquinas_lista())
+            if maq_manual != "Seleccionar...":
+                datos_hoy = ya_realizado_hoy(maq_manual)
+                if datos_hoy: st.warning(f"⚠️ Ya revisada hoy por {datos_hoy[0]}.")
+                else:
+                    with st.form("frm_manual"):
+                        op_m = st.selectbox("Operador:", ["Seleccionar...", "Julson Epingle", "Luis Zapata", "Mauricio Villanueva", "Oscar Fabres", "Lucio Zúñiga"])
+                        puntos_m = obtener_puntos(maq_manual)
+                        checks_m = {}; 
+                        for p in puntos_m: checks_m[p] = st.checkbox(p)
+                        est_m = st.radio("Estado:", ["Operativo", "CON FALLA"], index=None)
+                        obs_m = st.text_area("Observaciones:")
+                        canvas_m = st_canvas(stroke_width=2, height=100, key="f_man", background_color="#fff")
+                        if st.form_submit_button("Guardar Manual"):
+                            if op_m == "Seleccionar..." or not all(checks_m.values()) or est_m is None or canvas_m.image_data is None:
+                                st.error("Faltan datos.")
+                            else:
+                                f_dt = datetime.now(); f_str = f_dt.strftime("%Y-%m-%d %H:%M:%S")
+                                f_path_m = os.path.join(CARPETA_FIRMAS, f"{maq_manual}_MANUAL_{f_dt.strftime('%Y%m%d')}.png")
+                                Image.fromarray(canvas_m.image_data.astype(np.uint8)).save(f_path_m)
+                                
+                                txt_c = " | ".join([f"{k}:OK" for k in checks_m])
+                                es_f = 1 if est_m=="CON FALLA" else 0
+                                
+                                conn = sqlite3.connect(DB_PATH); c=conn.cursor()
+                                c.execute("INSERT INTO registros_inspeccion (fecha_hora, maquina_id, operador, checks_ok, repuesto_necesario, comentarios, firma_path, pdf_path) VALUES (?,?,?,?,?,?,?,?)", 
+                                          (f_str, maq_manual, op_m, txt_c, es_f, obs_m, f_path_m, ""))
+                                conn.commit()
+                                last_id = c.lastrowid
+                                conn.close()
+                                
+                                pdf_path_m = generar_pdf_checklist(maq_manual, op_m, f_dt, puntos_m, est_m, obs_m, f_path_m)
+                                if pdf_path_m:
+                                    conn = sqlite3.connect(DB_PATH); c=conn.cursor()
+                                    c.execute("UPDATE registros_inspeccion SET pdf_path=? WHERE rowid=?", (pdf_path_m, last_id))
+                                    conn.commit(); conn.close()
+                                
+                                st.success("Guardado."); st.rerun()
+
+    # --- TAB 2: PLAN EXTERNO ---
+    with tab2:
+        st.header("🗓️ Planificación de Mantenimiento Externo")
+        col_prog, col_view = st.columns([1, 2])
+        with col_prog:
+            st.markdown("### 🛠️ Configurar Plan")
+            with st.container(border=True):
+                m_prog = st.selectbox("1. Seleccione Máquina:", get_maquinas_lista(), key="sel_maq_prog")
+                periodicidad = st.selectbox("2. Periodicidad:", ["Trimestral (4 veces)", "Semestral (2 veces)", "Anual (1 vez)", "Mensual (12 veces)"], key="sel_freq_prog")
+                anio_plan = st.number_input("Año:", value=datetime.now().year, step=1)
+                cant_eventos = 1
+                if "Semestral" in periodicidad: cant_eventos = 2
+                elif "Trimestral" in periodicidad: cant_eventos = 4
+                elif "Mensual" in periodicidad: cant_eventos = 12
+                with st.form("form_meses"):
+                    datos_a_guardar = []
+                    for i in range(cant_eventos):
+                        c1, c2 = st.columns([1.5, 1])
+                        with c1: mes_txt = st.selectbox(f"Mes #{i+1}", MESES_NOMBRES, key=f"m_{i}")
+                        with c2: hecho = st.checkbox("¿Hecho?", key=f"chk_{i}")
+                        fecha_real = st.date_input(f"F. Real #{i+1}", value=datetime.now(), key=f"d_{i}", format="DD-MM-YYYY") if hecho else None
+                        datos_a_guardar.append({"mes_nombre": mes_txt, "hecho": hecho, "fecha_real": fecha_real})
+                    prov = st.text_input("Proveedor:", "Externo")
+                    if st.form_submit_button("💾 Actualizar Plan"):
+                        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
+                        c.execute("DELETE FROM plan_externo WHERE maquina_id=? AND strftime('%Y', fecha_programada)=?", (m_prog, str(anio_plan)))
+                        for item in datos_a_guardar:
+                            mes_idx = MESES_NOMBRES.index(item["mes_nombre"]) + 1
+                            fecha_prog = date(anio_plan, mes_idx, 1)
+                            estado = "Realizado" if item["hecho"] else "Programado"
+                            f_real_db = item["fecha_real"] if item["hecho"] else None
+                            evaluacion = None
+                            if item["hecho"]:
+                                if f_real_db.month <= mes_idx and f_real_db.year <= anio_plan: evaluacion = "A Tiempo"
+                                else: evaluacion = "Atrasado"
+                            c.execute("""INSERT INTO plan_externo (maquina_id, fecha_programada, proveedor, estado, fecha_realizacion, evaluacion_proveedor) VALUES (?,?,?,?,?,?)""", (m_prog, fecha_prog, prov, estado, f_real_db, evaluacion))
+                        conn.commit(); conn.close(); st.success("Plan actualizado."); st.rerun()
+
+        with col_view:
+            st.markdown("### 👀 Matriz Visual Anual")
+            conn = sqlite3.connect(DB_PATH)
+            df_plan = pd.read_sql("SELECT * FROM plan_externo", conn)
+            conn.close()
+            if not df_plan.empty:
+                df_plan['fecha_programada'] = pd.to_datetime(df_plan['fecha_programada'])
+                df_plan = df_plan[df_plan['fecha_programada'].dt.year == datetime.now().year]
+                maquinas_all = get_maquinas_lista()
+                matrix_data = []
+                plan_map = {m: {} for m in maquinas_all}
+                for _, row in df_plan.iterrows():
+                    mid = row['maquina_id']
+                    if mid in maquinas_all:
+                        mes_idx = row['fecha_programada'].month
+                        icon = calcular_estado_mes(row['fecha_programada'], row['estado'])
+                        if row['estado'] == 'Realizado' and row['fecha_realizacion']:
+                            f_str = pd.to_datetime(row['fecha_realizacion']).strftime("%d/%m")
+                            icon = f"✅ {f_str}"
+                        plan_map[mid][mes_idx] = icon
+                for m in maquinas_all:
+                    row_data = {"Máquina": m}
+                    for i, mes_name in enumerate(MESES_NOMBRES, 1): row_data[mes_name] = plan_map[m].get(i, "")
+                    matrix_data.append(row_data)
+                st.dataframe(pd.DataFrame(matrix_data), use_container_width=True, hide_index=True)
+                st.caption("🟠 ALERTA: Quedan 10 días hábiles (2 semanas) o menos.")
+            else: st.info("No hay planes.")
+            
+            st.divider()
+            st.subheader("📂 Evidencia Técnica (PDF)")
+            conn = sqlite3.connect(DB_PATH)
+            df_real = pd.read_sql("SELECT id, maquina_id, fecha_realizacion FROM plan_externo WHERE estado='Realizado' AND evidencia_pdf_path IS NULL", conn)
+            conn.close()
+            if not df_real.empty:
+                df_real['fecha_fmt'] = pd.to_datetime(df_real['fecha_realizacion']).dt.strftime('%d-%m-%Y')
+                opts = df_real.apply(lambda x: f"{x['maquina_id']} ({x['fecha_fmt']}) ID:{x['id']}", axis=1)
+                sel_ev = st.selectbox("Seleccionar Mantenimiento:", opts)
+                pdf = st.file_uploader("Adjuntar PDF", type="pdf")
+                if st.button("Guardar PDF") and pdf:
+                    eid = int(sel_ev.split("ID:")[1])
+                    path = os.path.join(CARPETA_EVIDENCIAS, f"EVID_{eid}_{pdf.name}")
+                    with open(path, "wb") as f: f.write(pdf.getbuffer())
+                    conn = sqlite3.connect(DB_PATH); c=conn.cursor()
+                    c.execute("UPDATE plan_externo SET evidencia_pdf_path=? WHERE id=?", (path, eid))
+                    conn.commit(); conn.close(); st.success("Guardado."); st.rerun()
+            else: st.info("Todo documentado.")
+
+    # --- TAB 3: CONFIG ---
+    with tab3:
+        st.header("⚙️ Configuración")
+        c1, c2 = st.columns(2)
+        with c1: st.dataframe(pd.DataFrame(get_maquinas_lista(), columns=["Máquinas Activas"]), use_container_width=True)
+        with c2:
+            u = st.text_input("URL Base:")
+            if st.button("Generar QRs") and u:
+                for m in get_maquinas_lista():
+                    qrcode.make(f"{u}/Mantencion?maquina={m}").save(os.path.join(CARPETA_QRS, f"qr_{m}.png"))
+                st.success("QRs generados.")

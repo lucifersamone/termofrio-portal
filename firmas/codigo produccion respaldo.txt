@@ -1,0 +1,614 @@
+import streamlit as st
+import pandas as pd
+import sqlite3
+import os
+import pythoncom 
+import xlwings as xw
+import tempfile
+import matplotlib.pyplot as plt
+from datetime import datetime, date, timedelta
+from pandas.tseries.offsets import BusinessDay
+
+# --- 🔐 SEGURIDAD GLOBAL ---
+if 'usuario_termofrio' not in st.session_state or not st.session_state.usuario_termofrio:
+    st.warning("⚠️ Acceso Restringido. Por favor inicie sesión en la pantalla Principal.")
+    st.stop()
+
+# --- RUTAS FIJAS ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(BASE_DIR)
+
+DB_PATH = os.path.join(ROOT_DIR, 'produccion_v55_master.db')
+
+# Carpeta de recursos gráficos
+DIR_RECURSOS = os.path.join(ROOT_DIR, 'firma_timbre') 
+FIRMA_PATH = os.path.join(DIR_RECURSOS, 'firma.png')
+TIMBRE_PATH = os.path.join(DIR_RECURSOS, 'timbre.png')
+
+CONTRASEÑA_EXCEL = "termofrio" 
+
+# --- FUNCIONES DE CONEXIÓN ---
+def get_connection():
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
+
+def get_precios_df():
+    conn = get_connection(); 
+    try: df = pd.read_sql("SELECT * FROM lista_precios", conn)
+    except: df = pd.DataFrame()
+    conn.close()
+    return df
+
+def get_obras_ceco_df():
+    conn = get_connection(); 
+    try: df = pd.read_sql("SELECT * FROM maestro_obras", conn)
+    except: df = pd.DataFrame()
+    conn.close()
+    return df
+
+# --- 🧠 INTELIGENCIA ARTIFICIAL (CORREGIDA: MANEJO DE NONE/NAN) ---
+def normalizar_clave(descripcion, espesor):
+    """Crea una llave única estandarizada para comparar ítems."""
+    d = str(descripcion).upper().strip()
+    try: e = round(float(espesor), 2)
+    except: e = 0.0
+    return f"{d}_{e}"
+
+def inteligencia_rellenar_pesos(df_items_nuevos):
+    """
+    Rellena pesos faltantes (0 o None) usando historial y datos del archivo actual.
+    """
+    conn = get_connection()
+    try:
+        # CORRECCIÓN CRÍTICA: Convertir NaN/None a 0.0 explícitamente
+        df_items_nuevos['peso_total'] = pd.to_numeric(df_items_nuevos['peso_total'], errors='coerce').fillna(0.0)
+        df_items_nuevos['cantidad'] = pd.to_numeric(df_items_nuevos['cantidad'], errors='coerce').fillna(0.0)
+
+        # 1. Obtener Historial de BD
+        query = "SELECT descripcion, espesor, peso_total, cantidad FROM items_pedido WHERE peso_total > 0 AND cantidad > 0"
+        df_hist = pd.read_sql(query, conn)
+        
+        # 2. Obtener Datos Validos del Archivo Actual
+        df_actual_valido = df_items_nuevos[
+            (df_items_nuevos['peso_total'] > 0.01) & 
+            (df_items_nuevos['cantidad'] > 0)
+        ][['descripcion', 'espesor', 'peso_total', 'cantidad']]
+        
+        # 3. Fusionar Conocimiento
+        df_conocimiento = pd.concat([df_hist, df_actual_valido], ignore_index=True)
+        
+        if df_conocimiento.empty: return df_items_nuevos
+        
+        # 4. Calcular pesos unitarios promedio
+        df_conocimiento['peso_unitario'] = df_conocimiento['peso_total'] / df_conocimiento['cantidad']
+        
+        # Generar diccionario con clave normalizada
+        df_conocimiento['key'] = df_conocimiento.apply(lambda x: normalizar_clave(x['descripcion'], x['espesor']), axis=1)
+        memoria_pesos = df_conocimiento.groupby('key')['peso_unitario'].mean().to_dict()
+        
+        # 5. Función de predicción
+        def predecir(row):
+            # Si ya tiene peso, lo conservamos
+            if row['peso_total'] > 0.01: 
+                return row['peso_total'], row['origen_precio']
+            
+            # Si es 0, buscamos en memoria
+            key = normalizar_clave(row['descripcion'], row['espesor'])
+            
+            if key in memoria_pesos:
+                peso_calculado = memoria_pesos[key] * row['cantidad']
+                return peso_calculado, "🤖 IA Estimado"
+            
+            return 0.0, row['origen_precio']
+
+        # Aplicar predicción
+        resultados = df_items_nuevos.apply(predecir, axis=1, result_type='expand')
+        df_items_nuevos['peso_total'] = resultados[0]
+        df_items_nuevos['origen_precio'] = resultados[1]
+        
+    except Exception as e:
+        print(f"Error IA: {e}")
+    finally:
+        conn.close()
+        
+    return df_items_nuevos
+
+# --- FUNCIONES LÓGICAS ---
+def buscar_datos_por_tf(tf_pedido):
+    if not tf_pedido: return None, None
+    conn = get_connection()
+    try:
+        df_obras = pd.read_sql("SELECT * FROM maestro_obras", conn)
+        tf_input_clean = str(tf_pedido).upper().replace("TF", "").replace("-", "").strip()
+        for _, row in df_obras.iterrows():
+            if tf_input_clean in str(row['tf']).upper(): return row['ceco'], row['nombre']
+    except: pass
+    finally: conn.close()
+    return None, None
+
+def get_materiales_disponibles():
+    conn = get_connection()
+    try:
+        df = pd.read_sql("SELECT DISTINCT material FROM lista_precios WHERE material != 'Pieza Especial'", conn)
+        materiales = df['material'].dropna().unique().tolist()
+    except: materiales = []
+    conn.close()
+    if "Galvanizado" not in materiales: materiales.insert(0, "Galvanizado")
+    return sorted(materiales)
+
+def get_precio_promedio_material(material, df_precios):
+    filtro = df_precios[(df_precios['material'].str.upper() == material.upper()) & (df_precios['unidad'].str.lower() == 'kg')]
+    if not filtro.empty: return filtro['precio'].max() 
+    return 0
+
+def buscar_precio_logica_v39(desc, cant, peso, df_precios, material_seleccionado):
+    desc_p = str(desc).upper().strip()
+    if material_seleccionado == "Galvanizado":
+        match = df_precios[df_precios['item'].str.upper() == desc_p]
+        if match.empty:
+            for _, r in df_precios.iterrows():
+                m = str(r['item']).upper()
+                if r['material'] in ['Galvanizado', 'Pieza Especial']:
+                    if m in desc_p and len(m)>3: match = pd.DataFrame([r]); break
+                    if desc_p in m and len(desc_p)>3: match = pd.DataFrame([r]); break
+        if not match.empty:
+            d = match.iloc[0]; p = d['precio']; u = str(d['unidad']).lower().strip()
+            if u == 'un': return p, cant * p, 'un', f"Lista: {d['item']} (Pieza Esp.)"
+            else: return p, peso * p, 'kg', f"Lista: {d['item']} (Galv)"
+        else: return 0, 0, "-", "Manual"
+    else:
+        precio_base_kg = get_precio_promedio_material(material_seleccionado, df_precios)
+        if precio_base_kg > 0: return precio_base_kg, peso * precio_base_kg, 'kg', f"Base {material_seleccionado} ({precio_base_kg}/kg)"
+        else: return 0, 0, "kg", f"Sin precio base"
+
+def calcular_semaforo(row):
+    if row['estado'] == 'Terminado': return "✅ Finalizado"
+    try:
+        limite = pd.to_datetime(row['fecha_limite']).date()
+        hoy = datetime.now().date()
+        dias = (limite - hoy).days
+        if dias < 0: return "🔴 VENCIDO"
+        elif dias <= 2: return "🟡 Por Vencer"
+        else: return "🟢 En Plazo"
+    except: return "⚪ Error"
+
+def procesar_pedido(archivo, df_precios, material_default):
+    xls = pd.ExcelFile(archivo)
+    enc = {"obra":"", "num":"", "envia":"", "fecha":None, "m2": 0.0, "tf": ""}
+    items = []
+    hoja_items = None
+    
+    for h in xls.sheet_names:
+        if "HOJA DE PEDIDO" in h.upper(): hoja_items = h; break
+    if not hoja_items:
+        for h in xls.sheet_names:
+            if "DISEÑO" in h.upper() or "DISENO" in h.upper(): hoja_items = h; break
+    if not hoja_items and xls.sheet_names: hoja_items = xls.sheet_names[0]
+    
+    for h in xls.sheet_names:
+        if "DISEÑO" in h.upper() or "DISENO" in h.upper():
+            try:
+                df_temp = pd.read_excel(xls, sheet_name=h, header=None)
+                tf_c = df_temp.iloc[5, 3] 
+                if not pd.isna(tf_c): enc["tf"] = str(tf_c).replace(".0", "").strip()
+            except: pass; break
+            
+    if hoja_items:
+        try:
+            df = pd.read_excel(xls, sheet_name=hoja_items, header=None)
+            if not enc["tf"]:
+                try:
+                    tf_r = df.iloc[5, 3]
+                    if pd.isna(tf_r): tf_r = df.iloc[4, 3] if not pd.isna(df.iloc[4, 3]) else df.iloc[6, 3]
+                    enc["tf"] = str(tf_r).replace(".0", "").strip()
+                except: pass
+            try:
+                enc["obra"] = str(df.iloc[5, 6])
+                if enc["obra"] == "nan": enc["obra"] = str(df.iloc[4, 3])
+                enc["num"] = str(df.iloc[6, 6])
+                enc["envia"] = str(df.iloc[7, 6]) 
+                fecha_r = df.iloc[3, 19] 
+                if pd.isna(fecha_r): fecha_r = df.iloc[4, 7]
+                enc["fecha"] = fecha_r
+                m2_val = pd.to_numeric(df.iloc[7, 34], errors='coerce')
+                enc["m2"] = m2_val if not pd.isna(m2_val) else 0.0
+            except: pass
+            
+            row_h = -1; col_d = 8; col_c = 10; col_p = 32; col_esp = 30 
+            for r in range(20):
+                for c in range(df.shape[1]):
+                    v = str(df.iloc[r, c]).upper()
+                    if "DESCRIPCI" in v: row_h = r; col_d = c
+                    if "CANT" in v and "." in v: col_c = c
+                    if "KILOS" in v or ("TOTAL" in v and c > 20): col_p = c
+                    if "ESP" in v or "MM" in v: col_esp = c
+                if row_h != -1: break
+            if row_h == -1: row_h = 10 
+            
+            for r in range(row_h+1, len(df)):
+                try:
+                    desc = str(df.iloc[r, col_d]).strip()
+                    if desc == "nan" or desc == "": continue
+                    if "TOTAL" in desc.upper() or "NETO" in desc.upper() or "GENERAL" in desc.upper(): continue
+                    
+                    inum = df.iloc[r, 0]
+                    if pd.isna(inum): inum = df.iloc[r, 2]
+                    
+                    cnt = pd.to_numeric(df.iloc[r, col_c], errors='coerce')
+                    if pd.isna(cnt): cnt = 0.0
+                    
+                    # CORRECCIÓN: Convertir a numérico y manejar NaN como 0.0 inmediatamente
+                    pes_raw = pd.to_numeric(df.iloc[r, col_p], errors='coerce')
+                    pes = 0.0 if pd.isna(pes_raw) else pes_raw
+                    
+                    esp = pd.to_numeric(df.iloc[r, col_esp], errors='coerce')
+                    if pd.isna(esp): esp = 0.0
+                    
+                    if cnt == 0 and pes == 0: continue
+                    
+                    pu, tot, un, ori = buscar_precio_logica_v39(desc, cnt, pes, df_precios, material_default)
+                    
+                    items.append({
+                        "item_num":inum, "descripcion":desc, "cantidad":cnt, 
+                        "espesor":esp, "peso_total":pes, "material": material_default, 
+                        "unidad_cobro":un, "precio_unitario":pu, "total_linea":tot, "origen_precio":ori
+                    })
+                except: continue
+        except: pass
+    
+    df_result = pd.DataFrame(items)
+    
+    # --- APLICACIÓN DE IA (LÓGICA BLINDADA) ---
+    if not df_result.empty:
+        # Convertimos la columna a numérico por si acaso, llenando NaN con 0
+        df_result['peso_total'] = pd.to_numeric(df_result['peso_total'], errors='coerce').fillna(0.0)
+        
+        # Ahora preguntamos si hay Ceros (que incluye los que eran NaN)
+        if (df_result['peso_total'] == 0).any():
+            df_result = inteligencia_rellenar_pesos(df_result)
+            
+            # Recalcular precios
+            for i, row in df_result.iterrows():
+                if "IA Estimado" in str(row['origen_precio']):
+                    pu_new, tot_new, un_new, ori_new = buscar_precio_logica_v39(
+                        row['descripcion'], row['cantidad'], row['peso_total'], df_precios, material_default
+                    )
+                    df_result.at[i, 'precio_unitario'] = pu_new
+                    df_result.at[i, 'total_linea'] = tot_new
+                    df_result.at[i, 'unidad_cobro'] = un_new
+                    df_result.at[i, 'origen_precio'] = "🤖 IA + " + ori_new
+
+    return enc, df_result
+
+# --- FUNCIÓN GENERAR PDF (ESCALA AJUSTADA 0.25) ---
+def generar_pdf_firmado(archivo_bytes, ticket_id):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsm") as tmp:
+        tmp.write(archivo_bytes.getvalue())
+        ruta_temp_excel = tmp.name
+    ruta_temp_pdf = ruta_temp_excel.replace(".xlsm", ".pdf")
+    
+    pythoncom.CoInitialize() 
+    app = xw.App(visible=False)
+    
+    try:
+        wb = app.books.open(ruta_temp_excel)
+        hoja_activa = None
+        
+        for sheet in wb.sheets:
+            if "HOJA DE PEDIDO" in sheet.name.upper(): 
+                hoja_activa = sheet; break
+        if not hoja_activa and wb.sheets: hoja_activa = wb.sheets[0]
+        
+        if hoja_activa:
+            try:
+                hoja_activa.api.Unprotect(CONTRASEÑA_EXCEL) 
+                hoja_activa.range('B34').value = ticket_id 
+                
+                # --- MARCAR CASILLAS DE 'CUMPLE' ---
+                for r in range(12, 32):
+                    desc_val = hoja_activa.range(f'I{r}').value
+                    if desc_val and str(desc_val).strip() != "":
+                        hoja_activa.range(f'AH{r}').value = "X"
+                        hoja_activa.range(f'AH{r}').api.HorizontalAlignment = -4108
+                
+                # --- INSERTAR FIRMA Y TIMBRE (ESCALA 0.25) ---
+                celda_firma = 'X35'
+                celda_timbre = 'AE35'
+                
+                path_firma_abs = os.path.abspath(FIRMA_PATH)
+                path_timbre_abs = os.path.abspath(TIMBRE_PATH)
+
+                # Escala ajustada a 0.25 (Subió 1 punto desde 0.2)
+                if os.path.exists(path_firma_abs):
+                    hoja_activa.pictures.add(path_firma_abs, name='Firma_Taller', update=True,
+                        left=hoja_activa.range(celda_firma).left + 5, top=hoja_activa.range(celda_firma).top + 2, scale=0.25)
+                
+                if os.path.exists(path_timbre_abs):
+                    hoja_activa.pictures.add(path_timbre_abs, name='Timbre_Taller', update=True,
+                        left=hoja_activa.range(celda_timbre).left + 5, top=hoja_activa.range(celda_timbre).top + 2, scale=0.25)
+                
+                wb.save()
+                hoja_activa.api.ExportAsFixedFormat(0, ruta_temp_pdf)
+                wb.close()
+                return ruta_temp_pdf
+            except Exception as e:
+                print(f"Error hoja: {e}"); wb.close(); return None
+        else: wb.close(); return None
+    except Exception as e: print(f"Error Excel: {e}"); return None
+    finally:
+        try: app.quit()
+        except: pass
+
+# --- INTERFAZ ---
+st.title("📦 Producción - Termofrio SPA")
+tab1, tab2, tab3, tab4 = st.tabs(["📥 Ingreso", "📋 Gestión & Cierre", "⚙️ Configuración", "📊 Informes EDP"])
+
+# --- TAB 1: INGRESO ---
+with tab1:
+    st.header("Nuevo Pedido")
+    mats_db = get_materiales_disponibles()
+    material_sel = st.selectbox("🛠️ Material del Pedido", mats_db)
+    arch_ped = st.file_uploader("Sube Excel Pedido", type=None)
+    
+    if arch_ped:
+        enc, df_det = procesar_pedido(arch_ped, get_precios_df(), material_sel)
+        
+        if df_det.empty: st.error("❌ Sin items.")
+        else:
+            if df_det['origen_precio'].str.contains("IA").any():
+                st.success("🤖 **IA Activada:** Se han calculado pesos para ítems que venían vacíos.")
+                
+            ceco_bd, obra_bd = buscar_datos_por_tf(enc['tf'])
+            obra_final = obra_bd if obra_bd else enc['obra']
+            ceco_final = ceco_bd if ceco_bd else ""
+            
+            c1, c2, c3, c4 = st.columns(4)
+            with c1: st.text_input("TF Detectado", value=enc['tf'], disabled=True)
+            with c2: obra_input = st.text_input("Obra Oficial", value=obra_final)
+            with c3: ceco_input = st.text_input("CECO Oficial", value=ceco_final)
+            with c4: m2_input = st.number_input("M2 Totales", value=enc['m2'], format="%.2f")
+            
+            c5, c6 = st.columns(2)
+            with c5: quien = st.text_input("Solicitante", value=enc['envia'])
+            with c6: fuente = st.text_input("Fuente / Etiqueta", value="General")
+            
+            edited_df = st.data_editor(df_det, use_container_width=True, num_rows="dynamic")
+            neto = edited_df['total_linea'].sum(); peso = edited_df['peso_total'].sum()
+            st.markdown(f"### 💰 Neto: $ {neto:,.0f} | ⚖️ Peso: {peso:,.1f} Kg")
+            
+            if st.button("💾 Guardar Pedido"):
+                conn = get_connection(); c = conn.cursor()
+                flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
+                c.execute("INSERT INTO pedidos (num_pedido, tf, obra_codigo, ceco, fuente, quien_envia, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'Pendiente','En Proceso')", 
+                             (enc['num'], enc['tf'], obra_input, ceco_input, fuente, quien, datetime.now().date(), flim.date(), neto, peso, 0, m2_input))
+                pid = c.lastrowid
+                for _,r in edited_df.iterrows():
+                    c.execute("INSERT INTO items_pedido (pedido_id, item_numero, descripcion, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                                 (pid, r['item_num'], r['descripcion'], r['cantidad'], r['peso_total'], r['espesor'], r['material'], r['unidad_cobro'], r['precio_unitario'], r['total_linea'], r['origen_precio']))
+                conn.commit(); conn.close(); st.success("Guardado."); st.rerun()
+
+# --- TAB 2: GESTIÓN & CIERRE ---
+with tab2:
+    st.header("📋 Gestión de Pedidos")
+    conn = get_connection()
+    try: dfp = pd.read_sql("SELECT * FROM pedidos ORDER BY id DESC", conn)
+    except: dfp = pd.DataFrame()
+    conn.close()
+    
+    if not dfp.empty:
+        dfp['Alerta'] = dfp.apply(calcular_semaforo, axis=1)
+        filtro = st.radio("Ver:", ["Pendientes", "Terminados", "Todos"], horizontal=True)
+        if filtro == "Pendientes": dfv = dfp[dfp['estado']=='Pendiente']
+        elif filtro == "Terminados": dfv = dfp[dfp['estado']=='Terminado']
+        else: dfv = dfp
+        
+        cols_view = ['Alerta', 'num_pedido', 'tf', 'obra_codigo', 'quien_envia', 'fecha_recepcion', 'fecha_limite', 'm2_totales', 'kg_estimados', 'kg_reales', 'estado']
+        if filtro != "Pendientes": cols_view.append('fecha_termino')
+        st.dataframe(dfv[[c for c in cols_view if c in dfv.columns]], use_container_width=True, hide_index=True)
+        st.divider()
+        
+        # --- BLOQUE 1: CERRAR PEDIDO (ARRIBA) ---
+        st.subheader("✅ 1. Cerrar Producción (Paso Obligatorio)")
+        pend = dfp[dfp['estado']=='Pendiente']
+        
+        if not pend.empty:
+            pend['display'] = "N° " + pend['num_pedido'].astype(str) + " / " + pend['obra_codigo']
+            sel_cierre = st.selectbox("Seleccionar Pedido para Cerrar:", pend['display'])
+            id_sel_cierre = pend[pend['display']==sel_cierre].iloc[0]['id']
+            
+            c_p, c_f = st.columns(2)
+            with c_p: peso_r = st.number_input("Peso Real Fabricado (Kg)", min_value=0.0, step=0.1)
+            with c_f: fecha_c = st.date_input("Fecha Real Término", value=datetime.now())
+            
+            if st.button("🔒 Confirmar Cierre de Pedido", type="primary"):
+                conn=get_connection(); c=conn.cursor()
+                limite = pd.to_datetime(pend[pend['id']==id_sel_cierre].iloc[0]['fecha_limite']).date()
+                est_plazo = "A Tiempo" if fecha_c <= limite else "Atrasado"
+                
+                c.execute("UPDATE pedidos SET estado='Terminado', fecha_termino=?, kg_reales=?, estado_plazo=? WHERE id=?", 
+                          (fecha_c, peso_r, est_plazo, int(id_sel_cierre)))
+                conn.commit(); conn.close()
+                st.success("✅ Pedido Cerrado correctamente. Ahora puede generar el PDF abajo."); st.rerun()
+        else:
+            st.info("No hay pedidos pendientes por cerrar.")
+            
+        st.divider()
+        
+        # --- BLOQUE 2: GENERAR PDF (ABAJO, SEPARADO) ---
+        st.subheader("📄 2. Generar PDF Firmado (Para Pedidos Terminados)")
+        terminados = dfp[dfp['estado']=='Terminado']
+        
+        if not terminados.empty:
+            terminados['display'] = "N° " + terminados['num_pedido'].astype(str) + " / " + terminados['obra_codigo']
+            sel_pdf = st.selectbox("Seleccionar Pedido Terminado:", terminados['display'])
+            
+            st.caption("Suba el Excel original para insertar Firma, Timbre y marcas de 'Cumple'.")
+            excel_pdf = st.file_uploader("Excel Original:", type=["xlsm"], key="up_pdf")
+            
+            if excel_pdf and st.button("🚀 Generar PDF Firmado"):
+                id_ticket_pdf = terminados[terminados['display']==sel_pdf].iloc[0]['num_pedido']
+                
+                with st.spinner("Procesando Excel e insertando firmas..."):
+                    ruta_pdf_final = generar_pdf_firmado(excel_pdf, id_ticket_pdf)
+                    
+                    if ruta_pdf_final and os.path.exists(ruta_pdf_final):
+                        st.balloons()
+                        with open(ruta_pdf_final, "rb") as f:
+                            st.download_button(
+                                label="📥 DESCARGAR PDF OFICIAL",
+                                data=f,
+                                file_name=f"Pedido_{id_ticket_pdf}_FIRMADO.pdf",
+                                mime="application/pdf"
+                            )
+                    else:
+                        st.error("Error al generar el PDF. Verifique que el archivo Excel sea válido.")
+        else:
+            st.info("No hay pedidos terminados disponibles para generar PDF.")
+            
+        st.divider()
+        with st.expander("🗑️ Zona de Peligro: Eliminar Pedido"):
+            del_sel = st.selectbox("Borrar:", dfp['num_pedido'].astype(str) + " - " + dfp['obra_codigo'])
+            if st.button("Eliminar Definitivamente"):
+                id_d = dfp[dfp['num_pedido'].astype(str) + " - " + dfp['obra_codigo'] == del_sel].iloc[0]['id']
+                conn=get_connection(); c=conn.cursor()
+                c.execute("DELETE FROM items_pedido WHERE pedido_id=?", (int(id_d),)); c.execute("DELETE FROM pedidos WHERE id=?", (int(id_d),))
+                conn.commit(); conn.close(); st.warning("Eliminado."); st.rerun()
+
+    else: st.info("Sin registros.")
+
+# --- TAB 3: CONFIG ---
+with tab3:
+    col_c1, col_c2 = st.columns(2)
+    with col_c1:
+        st.header("1. Maestro de Precios")
+        df_precios = get_precios_df()
+        st.metric("Items Precios", len(df_precios))
+        with st.expander("Ver Precios"): st.dataframe(df_precios)
+    with col_c2:
+        st.header("2. Maestro Obras")
+        df_obras = get_obras_ceco_df()
+        st.metric("Obras Registradas", len(df_obras))
+        with st.expander("Ver Obras"): st.dataframe(df_obras)
+    st.divider()
+    st.subheader("🔐 Panel de Administración")
+    pwd = st.text_input("Contraseña de Administración:", type="password")
+    if pwd == "adminprecios":
+        c_up1, c_up2 = st.columns(2)
+        with c_up1:
+            st.markdown("##### Actualizar Precios")
+            arch_p = st.file_uploader("Archivo Precios", type=None, key="up1")
+            if arch_p and st.button("ACTUALIZAR PRECIOS"):
+                try:
+                    dfn = pd.read_csv(arch_p) if arch_p.name.endswith('.csv') else pd.read_excel(arch_p)
+                    dfn.columns = dfn.columns.str.upper().str.strip()
+                    conn=get_connection(); c=conn.cursor(); c.execute("DELETE FROM lista_precios")
+                    for _,r in dfn.iterrows():
+                        p = pd.to_numeric(r['PRECIO'], errors='coerce')
+                        if p > 0:
+                             mat = str(r['MATERIAL']).strip() if 'MATERIAL' in dfn.columns else "Galvanizado"
+                             c.execute("INSERT INTO lista_precios (item, unidad, precio, material) VALUES (?,?,?,?)", (str(r['ITEM']), str(r.get('UN','kg')), p, mat))
+                    conn.commit(); conn.close(); st.success("Precios actualizados."); st.rerun()
+                except Exception as e: st.error(str(e))
+
+# --- TAB 4: INFORMES ---
+with tab4:
+    st.header("📊 Tablero de Control y Auditoría EDP")
+    conn = get_connection()
+    try:
+        df_all_ped = pd.read_sql("SELECT * FROM pedidos", conn)
+        df_all_items = pd.read_sql("SELECT * FROM items_pedido", conn)
+    except: df_all_ped = pd.DataFrame(); df_all_items = pd.DataFrame()
+    conn.close()
+    
+    if not df_all_ped.empty and not df_all_items.empty:
+        df_all_ped['fecha_recepcion'] = pd.to_datetime(df_all_ped['fecha_recepcion'], errors='coerce')
+        df_all_ped['fecha_limite'] = pd.to_datetime(df_all_ped['fecha_limite'], errors='coerce')
+        df_all_ped['fecha_termino'] = pd.to_datetime(df_all_ped['fecha_termino'], errors='coerce')
+
+        col_f1, col_f2 = st.columns(2)
+        hoy = datetime.now()
+        mes_actual = hoy.month; anio_actual = hoy.year
+        if hoy.day <= 20: 
+            fecha_fin_def = date(anio_actual, mes_actual, 20)
+            fecha_ini_def = (fecha_fin_def.replace(day=1) - timedelta(days=1)).replace(day=21)
+        else: 
+            fecha_ini_def = date(anio_actual, mes_actual, 21)
+            next_month = mes_actual + 1 if mes_actual < 12 else 1
+            next_year = anio_actual if mes_actual < 12 else anio_actual + 1
+            fecha_fin_def = date(next_year, next_month, 20)
+
+        with col_f1: start_d = st.date_input("Fecha Inicio Corte", value=fecha_ini_def)
+        with col_f2: end_d = st.date_input("Fecha Fin Corte", value=fecha_fin_def)
+        
+        tipo_fecha = st.radio("Criterio de Fecha:", ["Fecha de Término (Producción)", "Fecha de Recepción (Ingreso)"], horizontal=True)
+        col_db = 'fecha_termino' if "Término" in tipo_fecha else 'fecha_recepcion'
+        
+        ts_start = pd.Timestamp(start_d); ts_end = pd.Timestamp(end_d)
+        df_filtrado = df_all_ped[(df_all_ped[col_db] >= ts_start) & (df_all_ped[col_db] <= ts_end)]
+        
+        st.divider()
+        if not df_filtrado.empty:
+            df_full = pd.merge(df_all_items, df_filtrado, left_on='pedido_id', right_on='id', suffixes=('_item', '_ped'))
+            
+            def clasificar_columna(row):
+                mat = str(row['material']).upper(); u = str(row['unidad_cobro']).lower()
+                if "PIEZA ESPECIAL" in mat or u == 'un': return "GALV_ESP"
+                if "FE" in mat or "CARBONO" in mat: return "FE"
+                if "INOX" in mat: return "INOX"
+                return "GALV"
+            
+            df_full['TIPO_EDP'] = df_full.apply(clasificar_columna, axis=1)
+            pedidos_unicos = df_full['pedido_id'].unique()
+            df_ajustado = pd.DataFrame()
+
+            for pid in pedidos_unicos:
+                df_p = df_full[df_full['pedido_id'] == pid].copy()
+                kg_r = df_p.iloc[0]['kg_reales']; kg_e = df_p['peso_total'].sum()
+                if kg_r > 0 and kg_e > 0:
+                    factor = kg_r / kg_e
+                    mask = df_p['unidad_cobro'].str.lower() != 'un'
+                    df_p.loc[mask, 'peso_total'] = df_p.loc[mask, 'peso_total'] * factor
+                    df_p.loc[mask, 'total_linea'] = df_p.loc[mask, 'peso_total'] * df_p.loc[mask, 'precio_unitario']
+                df_ajustado = pd.concat([df_ajustado, df_p])
+
+            obras_unicas = df_ajustado[['ceco', 'obra_codigo']].drop_duplicates()
+            resultados = []
+            for _, row_obra in obras_unicas.iterrows():
+                ceco = row_obra['ceco']; obra = row_obra['obra_codigo']
+                items_obra = df_ajustado[(df_ajustado['obra_codigo'] == obra) & (df_ajustado['ceco'] == ceco)]
+                galv = items_obra[items_obra['TIPO_EDP'] == 'GALV']
+                fe = items_obra[items_obra['TIPO_EDP'] == 'FE']
+                inox = items_obra[items_obra['TIPO_EDP'] == 'INOX']
+                esp = items_obra[items_obra['TIPO_EDP'] == 'GALV_ESP']
+                resultados.append({
+                    "CECO": ceco, "OBRA": obra,
+                    "KG GALV": round(galv['peso_total'].sum(), 1), "$ GALV": round(galv['total_linea'].sum(), 1),
+                    "KG FE": round(fe['peso_total'].sum(), 1), "$ FE": round(fe['total_linea'].sum(), 1),
+                    "KG INOX": round(inox['peso_total'].sum(), 1), "$ INOX": round(inox['total_linea'].sum(), 1),
+                    "KG ESP": round(esp['peso_total'].sum(), 1), "$ ESP": round(esp['total_linea'].sum(), 1),
+                    "$ MANT": 0
+                })
+            
+            df_edp = pd.DataFrame(resultados)
+            if not df_edp.empty:
+                fila_total = {
+                    "CECO": "TOTAL", "OBRA": "---",
+                    "KG GALV": df_edp["KG GALV"].sum(), "$ GALV": df_edp["$ GALV"].sum(),
+                    "KG FE": df_edp["KG FE"].sum(), "$ FE": df_edp["$ FE"].sum(),
+                    "KG INOX": df_edp["KG INOX"].sum(), "$ INOX": df_edp["$ INOX"].sum(),
+                    "KG ESP": df_edp["KG ESP"].sum(), "$ ESP": df_edp["$ ESP"].sum(),
+                    "$ MANT": 0
+                }
+                df_edp = pd.concat([df_edp, pd.DataFrame([fila_total])], ignore_index=True)
+
+                k1, k2 = st.columns(2)
+                total_kg = fila_total["KG GALV"] + fila_total["KG FE"] + fila_total["KG INOX"] + fila_total["KG ESP"]
+                total_plata = fila_total["$ GALV"] + fila_total["$ FE"] + fila_total["$ INOX"] + fila_total["$ ESP"]
+                k1.metric("⚖️ Total Kilos Periodo", f"{total_kg:,.1f} Kg")
+                k2.metric("💰 Total Valor Periodo", f"$ {total_plata:,.0f}")
+                
+                st.markdown("### 📋 Detalle Estado de Pago (EDP)")
+                st.dataframe(df_edp, use_container_width=True)
+                st.download_button("📥 Descargar CSV EDP", df_edp.to_csv(index=False).encode('utf-8'), f"EDP_{mes_actual}_{anio_actual}.csv", "text/csv")
+            else: st.info("Datos insuficientes para EDP.")
+        else: st.warning("No se encontraron pedidos en el rango.")
+    else: st.info("La base de datos está vacía.")
