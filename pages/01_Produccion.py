@@ -2,18 +2,16 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import os
-import pythoncom 
-import win32com.client as win32 
-import xlwings as xw
 import tempfile
+import requests
+import base64
+import io
+from fpdf import FPDF
 import matplotlib.pyplot as plt
 from datetime import datetime, date, timedelta
 from pandas.tseries.offsets import BusinessDay
 import numpy as np
-import urllib.parse 
 import altair as alt
-import io
-import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 # --- 🔐 SEGURIDAD UNIFICADA CON ROLES ---
@@ -113,13 +111,11 @@ MAPEO_CAMPOS = {
 # --- FUNCIONES DE CONEXIÓN Y DB ---
 def get_connection(): return sqlite3.connect(DB_PATH, check_same_thread=False)
 
-# --- MAGIA: EL MOTOR BLINDADO QUE TOMA EL CORRELATIVO CORRECTO ---
 def obtener_siguiente_correlativo_obra(obra_codigo, tf):
     """Busca el número de pedido más alto para una obra específica y devuelve el siguiente con prefijo OT."""
     conn = get_connection()
     c = conn.cursor()
     
-    # Blindaje contra espacios en blanco o valores nulos
     obra_segura = obra_codigo if (obra_codigo and str(obra_codigo).strip() != "" and obra_codigo != "Seleccione Obra...") else "NULO_OBRA_XYZ"
     tf_seguro = tf if (tf and str(tf).strip() != "") else "NULO_TF_XYZ"
     
@@ -231,7 +227,6 @@ def calcular_peso_teorico(desc, l_a, l_b, l_c, l_d, l_h, diam, diam2, esp):
         c = float(str(l_c).replace(',','.')) / 100 if l_c else 0.0
         d = float(str(l_d).replace(',','.')) / 100 if l_d else 0.0
         
-        # --- AQUÍ ESTÁ EL CAMBIO PARA LOS CENTÍMETROS ---
         h = float(str(l_h).replace(',','.')) / 100 if l_h else 0.0
         
         d1 = float(str(diam).replace(',','.')) / 100 if diam else 0.0
@@ -340,266 +335,201 @@ def procesar_pedido(archivo, df_precios, material_default):
     df_result = pd.DataFrame(items)
     return enc, df_result
 
-def generar_pdf_firmado(archivo, ticket_id, kg_reales=0):
-    clean_id = str(ticket_id).replace("/", "-").replace("\\", "-").strip()
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsm") as tmp:
-        tmp.write(archivo.getvalue()); ruta_xls = tmp.name
-        
-    temp_dir = tempfile.gettempdir()
-    ruta_pdf_bonito = os.path.join(temp_dir, f"Pedido_{clean_id}.pdf")
+# --- ENVÍO DE CORREOS VÍA RESEND API (Reemplaza a Outlook) ---
+def enviar_correo_api(to_email, subject, html_body, attachment_path=None):
+    api_key = "re_BDpTi8ZD_5bBbZV28hy3ZgK2FaukBqjZM"
+    url = "https://api.resend.com/emails"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     
-    pythoncom.CoInitialize(); app = xw.App(visible=False)
+    data = {
+        "from": "Sistema Termofrio <onboarding@resend.dev>",
+        "to": [to_email], 
+        "subject": subject,
+        "html": html_body
+    }
+    
+    if attachment_path and os.path.exists(attachment_path):
+        with open(attachment_path, "rb") as f:
+            file_data = f.read()
+            b64_content = base64.b64encode(file_data).decode('utf-8')
+        data["attachments"] = [
+            {
+                "filename": os.path.basename(attachment_path),
+                "content": b64_content
+            }
+        ]
+        
     try:
-        wb = app.books.open(ruta_xls); sh = None
-        for s in wb.sheets:
-            if "HOJA DE PEDIDO" in s.name.upper(): sh = s; break
-        if not sh: sh = wb.sheets[0]
-        sh.api.Unprotect(CONTRASEÑA_EXCEL)
-        sh.api.PageSetup.CenterHorizontally = True
-        sh.range('B34').value = ticket_id
-        try: kg_val = float(kg_reales)
-        except: kg_val = 0.0
-        if kg_val > 0:
-            sh.range('AG9').value = f"Kg totales del pedido: {kg_val}"
-            try: 
-                sh.range('AG9').api.Font.Bold = True
-                sh.range('AG9').api.Font.Color = 255
-            except: pass
-        for r in range(12, 32):
-            if sh.range(f'I{r}').value: sh.range(f'AH{r}').value = "X"; sh.range(f'AH{r}').api.HorizontalAlignment = -4108
-        for img, celda in [(FIRMA_PATH, 'X35'), (TIMBRE_PATH, 'AE35')]:
-            if os.path.exists(img): sh.pictures.add(os.path.abspath(img), left=sh.range(celda).left+5, top=sh.range(celda).top+2, scale=0.20)
-        wb.save(); sh.api.ExportAsFixedFormat(0, ruta_pdf_bonito); wb.close()
-        return ruta_pdf_bonito
-    except: return None
-    finally: app.quit()
+        response = requests.post(url, headers=headers, json=data)
+        return response.status_code == 200
+    except:
+        return False
 
-# --- GENERADOR PDF MULTIUSO ---
+# --- GENERADOR PDF MULTIUSO NATIVO (FPDF2) ---
 def generar_pdf_manual(pedido_num, tf, obra, ceco, solicitante, items_df, kg_reales, fuente="", observaciones="", tipo="despacho", men=""):
     clean_id = str(pedido_num).replace("/", "-").replace("\\", "-").strip()
     temp_dir = tempfile.gettempdir()
     
-    prefijo = "Orden_Trabajo" if tipo == "interna" else "Pedido_Manual"
+    prefijo = "Orden_Trabajo" if tipo == "interna" else "Pedido_Despacho"
     ruta_pdf = os.path.join(temp_dir, f"{prefijo}_{clean_id}.pdf")
+    
+    class PDFManual(FPDF):
+        def header(self):
+            self.set_fill_color(44, 62, 80) # Gris industrial oscuro para taller
+            if tipo != "interna": self.set_fill_color(32, 32, 192) # Azul para despacho
+            self.rect(0, 0, 210, 35, 'F')
+            self.set_font("Arial", "B", 16)
+            self.set_text_color(255, 255, 255)
+            titulo_doc = "ORDEN DE TRABAJO INTERNA" if tipo == "interna" else "ORDEN DE FABRICACIÓN Y DESPACHO"
+            self.cell(0, 12, titulo_doc, ln=True, align="L")
+            self.set_font("Arial", "", 11)
+            self.cell(0, 4, f"Termofrio SPA - Portal de Producción", ln=True, align="L")
+            self.ln(12)
 
-    pythoncom.CoInitialize()
-    app = xw.App(visible=False)
-    try:
-        wb = app.books.add()
-        sh = wb.sheets[0]
+        def footer(self):
+            self.set_y(-15)
+            self.set_font("Arial", "I", 8)
+            self.set_text_color(128, 128, 128)
+            self.cell(0, 10, f"Página {self.page_no()}/{{nb}} - Control de Producción Termofrio", align="C")
 
-        sh.api.PageSetup.Orientation = 2 
-        sh.api.PageSetup.Zoom = False
-        sh.api.PageSetup.FitToPagesWide = 1
-        sh.api.PageSetup.FitToPagesTall = False
-        sh.api.PageSetup.CenterHorizontally = True
+    pdf = PDFManual()
+    pdf.alias_nb_pages()
+    pdf.add_page()
+    pdf.set_text_color(51, 51, 51)
+    
+    # Bloque Informativo
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, f"DOCUMENTO REFERENCIA: {pedido_num}", ln=True)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(4)
+    
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(35, 6, "Código TF / CC:"); pdf.set_font("Arial", ""); pdf.cell(60, 6, str(tf))
+    pdf.set_font("Arial", "B", 10); pdf.cell(30, 6, "Obra Destino:"); pdf.set_font("Arial", ""); pdf.cell(65, 6, str(obra)[:30], ln=True)
+    
+    pdf.set_font("Arial", "B", 10); pdf.cell(35, 6, "CECO:"); pdf.set_font("Arial", ""); pdf.cell(60, 6, str(ceco))
+    pdf.set_font("Arial", "B", 10); pdf.cell(30, 6, "Solicitante:"); pdf.set_font("Arial", ""); pdf.cell(65, 6, str(solicitante)[:30], ln=True)
+    
+    try: kg_r = float(kg_reales)
+    except: kg_r = 0.0
+    kg_str = f"{kg_r:.1f} Kg" if kg_r > 0 else "__________ Kg"
+    
+    pdf.set_font("Arial", "B", 10); pdf.cell(35, 6, "M.E.N:"); pdf.set_font("Arial", ""); pdf.cell(60, 6, str(men))
+    pdf.set_font("Arial", "B", 10); pdf.cell(30, 6, "Kilos Reales:"); pdf.set_font("Arial", "B"); pdf.set_text_color(200,0,0); pdf.cell(65, 6, kg_str, ln=True)
+    pdf.set_text_color(51, 51, 51)
+    
+    # Alertas de Aislacion / Forro
+    alertas = []
+    if "Aislación" in str(fuente): alertas.append("AISLACIÓN INTERIOR")
+    if "Forro Metálico" in str(fuente): alertas.append("FORRO METÁLICO")
+    if alertas:
+        pdf.ln(2)
+        pdf.set_fill_color(255, 230, 230)
+        pdf.set_text_color(200, 0, 0)
+        pdf.set_font("Arial", "B", 11)
+        pdf.cell(0, 8, f"🚨 INCLUYE: {' Y '.join(alertas)} 🚨", ln=True, align="C", fill=True)
+        pdf.set_text_color(51, 51, 51)
         
-        sh.api.PageSetup.LeftMargin = 36  
-        sh.api.PageSetup.RightMargin = 36
-
-        sh.range('A:A').column_width = 2
-        sh.range('B:B').column_width = 16  
-        sh.range('C:C').column_width = 18  
-        sh.range('D:D').column_width = 48  
-        sh.range('E:E').column_width = 10   
-        sh.range('F:F').column_width = 11   
-        sh.range('G:G').column_width = 13  
-
-        sh.range('2:4').row_height = 25
-        if os.path.exists(LOGO_PATH):
-            sh.pictures.add(os.path.abspath(LOGO_PATH), left=sh.range('B2').left, top=sh.range('B2').top, height=80)
-        if os.path.exists(ISO_PATH):
-            sh.pictures.add(os.path.abspath(ISO_PATH), left=sh.range('G2').left + 15, top=sh.range('B2').top, height=80)
-
-        sh.range('B5:G5').api.Merge()
-        if tipo == "interna":
-            sh.range('B5').value = "ORDEN DE TRABAJO INTERNA - TALLER TERMOFRIO"
-            sh.range('B5').api.Font.Color = 0x555555 
-        else:
-            sh.range('B5').value = "ORDEN DE FABRICACIÓN Y DESPACHO - TERMOFRIO SPA"
-            sh.range('B5').api.Font.Color = 0x2020C0 
+    pdf.ln(6)
+    
+    # Dibujar la tabla de ítems
+    pdf.set_fill_color(240, 240, 240)
+    pdf.set_font("Arial", "B", 9)
+    pdf.cell(15, 7, "Item", border=1, fill=True, align="C")
+    pdf.cell(40, 7, "Pieza", border=1, fill=True)
+    pdf.cell(100, 7, "Detalle Técnico de Medidas", border=1, fill=True)
+    pdf.cell(15, 7, "Cant.", border=1, fill=True, align="C")
+    pdf.cell(20, 7, "Kg", border=1, fill=True, align="C", ln=True)
+    
+    pdf.set_font("Arial", "", 9)
+    for _, fila in items_df.iterrows():
+        it = str(fila.get('item_num', fila.get('item_numero', '1')))
+        desc = str(fila.get('descripcion', fila.get('Descripción', '')))
+        detalles = str(fila.get('detalles', fila.get('Detalles/Medidas', ''))).replace('nan', '')
+        c_val = str(fila.get('cantidad', fila.get('Cant.', '1')))
+        
+        try: k_val = f"{float(fila.get('peso_total', fila.get('Kg', 0))):.1f}"
+        except: k_val = "0.0"
+        
+        top_y = pdf.get_y()
+        # Control de salto de página seguro para evitar cortes
+        if top_y > 260:
+            pdf.add_page()
+            top_y = pdf.get_y()
             
-        sh.range('B5').api.Font.Bold = True
-        sh.range('B5').api.Font.Size = 16
-        sh.range('B5').api.HorizontalAlignment = -4108
-
-        # --- CAJA DE INFORMACIÓN ---
-        sh.range('B7:G10').color = (245, 245, 245)
+        pdf.cell(15, 6, it, border=1, align="C")
+        pdf.cell(40, 6, desc[:22], border=1)
         
-        sh.range('B7').value = "N° de Pedido:"
-        sh.range('C7:D7').api.Merge()
-        sh.range('C7').value = f"{pedido_num}"
+        pos_x = pdf.get_x()
+        pdf.multi_cell(100, 6, detalles, border=1)
+        end_y = pdf.get_y()
         
-        sh.range('E7:G7').api.Merge()
-        if tipo == "interna":
-            sh.range('E7').value = "KG REALES FABRICADOS: _________ Kg"
-            sh.range('E7').api.Font.Color = 0x000000 
-        else:
-            try: kg_reales_formateado = f"{float(kg_reales):.1f}"
-            except: kg_reales_formateado = str(kg_reales)
-            sh.range('E7').value = f"KG REALES FABRICADOS: {kg_reales_formateado} Kg"
-            sh.range('E7').api.Font.Color = 255
-        sh.range('B8').value = "Obra Destino:"
-        sh.range('C8:D8').api.Merge()
-        sh.range('C8').value = f"{obra}"
-        sh.range('E8:G8').api.Merge()
-        sh.range('E8').value = f"Fecha Emisión: {datetime.now().strftime('%d/%m/%Y')}"
+        pdf.set_xy(pos_x + 100, top_y)
+        pdf.cell(15, end_y - top_y, c_val, border=1, align="C")
+        pdf.cell(20, end_y - top_y, k_val, border=1, align="C", ln=True)
+        pdf.set_y(end_y)
 
-        sh.range('B9').value = "Código TF ó CC:"
-        sh.range('C9').value = f"{tf}"
-        sh.range('D9').value = f"CECO: {ceco}"
-        sh.range('E9:G9').api.Merge()
-        if men and str(men).strip() and str(men) != "nan":
-            sh.range('E9').value = f"MEN: {men}"
-            sh.range('E9').api.Font.Bold = True
-
-        sh.range('B10').value = "Solicitante:"
-        sh.range('C10:D10').api.Merge()
-        sh.range('C10').value = f"{solicitante}"
+    if observaciones and str(observaciones).strip() != "nan":
+        pdf.ln(4)
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(0, 6, "Observaciones / Comentarios:", ln=True)
+        pdf.set_font("Arial", "I", 9)
+        pdf.multi_cell(0, 5, str(observaciones), border=1)
         
-        sh.range('C7:D10').api.HorizontalAlignment = -4131 
-        sh.range('B7:B10').api.Font.Bold = True
-        sh.range('D9').api.Font.Bold = True
-        sh.range('E7:E8').api.Font.Bold = True
-
-        # --- ALERTA DE AISLACIÓN Y FORRO METÁLICO EN PDF ---
-        alertas_pdf = []
-        if "Aislación" in str(fuente): alertas_pdf.append("AISLACIÓN")
-        if "Forro Metálico" in str(fuente): alertas_pdf.append("FORRO METÁLICO")
+    # --- SECCIÓN DE FIRMAS ---
+    if pdf.get_y() > 230:
+        pdf.add_page()
         
-        if alertas_pdf:
-            sh.range('E10:G10').api.Merge()
-            texto_alerta = " Y ".join(alertas_pdf)
-            sh.range('E10').value = f"🚨 INCLUYE {texto_alerta} 🚨"
-            sh.range('E10').api.Font.Color = 255
-            sh.range('E10').api.Font.Bold = True
-            sh.range('E10').color = (255, 220, 220) 
-            sh.range('E10').api.HorizontalAlignment = -4108
-
-        sh.range('B7:G10').api.Borders.Weight = 2
-
-        sh.range('B7:G10').api.Borders.Weight = 2
-
-        # --- TABLA DE DETALLES ---
-        headers = ["Ítem N°", "Descripción", "Medidas y Especificaciones", "Cant.", "Espesor", "Kg"]
-        sh.range('B12').value = headers[0]
-        sh.range('C12').value = headers[1]
-        sh.range('D12').value = headers[2]
-        sh.range('E12').value = headers[3]
-        sh.range('F12').value = headers[4]
-        sh.range('G12').value = headers[5]
+    pdf.ln(10)
+    pdf.set_fill_color(230, 230, 230)
+    pdf.set_font("Arial", "B", 10)
+    
+    if tipo == "interna":
+        pdf.cell(0, 8, "CONTROL DE PRODUCCIÓN EN TALLER", border=1, ln=True, align="C", fill=True)
+        pdf.cell(95, 25, "", border=1) 
+        pdf.set_xy(105, pdf.get_y() - 25)
+        pdf.cell(95, 25, "", border=1, ln=True) 
         
-        sh.range('B12:G12').api.Font.Bold = True
-        sh.range('B12:G12').color = (105, 105, 105) 
-        sh.range('B12:G12').api.Font.Color = 16777215 
-        sh.range('B12:G12').api.HorizontalAlignment = -4108
-
-        row_start = 13
-        for _, row in items_df.iterrows():
-            try: kg_str = f"{float(row.get('peso_total', 0)):.2f}"
-            except: kg_str = str(row.get('peso_total', ''))
+        pdf.set_xy(10, pdf.get_y() - 25)
+        pdf.set_font("Arial", "", 9)
+        pdf.cell(95, 6, "Fabricado por (Nombre y Firma Operario):", align="C", ln=True)
+        pdf.set_xy(10, pdf.get_y() + 10)
+        pdf.cell(95, 6, "___________________________________", align="C")
+        
+        pdf.set_xy(105, pdf.get_y() - 16)
+        pdf.cell(95, 6, "Revisado por (Jefe de Taller):", align="C", ln=True)
+        pdf.set_xy(105, pdf.get_y() + 10)
+        pdf.cell(95, 6, "___________________________________", align="C")
+    else:
+        pdf.cell(0, 8, "SECCIÓN DE VALIDACIÓN Y FIRMAS", border=1, ln=True, align="C", fill=True)
+        pdf.cell(95, 35, "", border=1) 
+        pdf.set_xy(105, pdf.get_y() - 35)
+        pdf.cell(95, 35, "", border=1, ln=True) 
+        
+        y_firmas = pdf.get_y() - 35
+        
+        pdf.set_xy(10, y_firmas)
+        pdf.set_font("Arial", "B", 9)
+        pdf.cell(95, 6, "Taller de Producción Termofrio", align="C", ln=True)
+        pdf.set_xy(10, pdf.get_y())
+        pdf.cell(95, 6, "Jefe Producción HVAC: Lucio Zuñiga", align="C", ln=True)
+        pdf.set_xy(10, pdf.get_y() + 15)
+        pdf.cell(95, 6, "___________________________________", align="C", ln=True)
+        
+        pdf.set_xy(105, y_firmas)
+        pdf.cell(95, 6, "Firma Supervisor", align="C", ln=True)
+        pdf.set_xy(105, pdf.get_y())
+        pdf.cell(95, 6, "Validación de Calidad", align="C", ln=True)
+        pdf.set_xy(105, pdf.get_y() + 15)
+        pdf.cell(95, 6, "___________________________________", align="C", ln=True)
+        
+        if os.path.exists(FIRMA_PATH):
+            pdf.image(FIRMA_PATH, x=45, y=y_firmas + 10, w=25)
+        if os.path.exists(TIMBRE_PATH):
+            pdf.image(TIMBRE_PATH, x=140, y=y_firmas + 8, w=25)
             
-            try: esp_str = f"{float(row.get('espesor', 0)):.1f}"
-            except: esp_str = str(row.get('espesor', ''))
-
-            sh.range(f'B{row_start}').value = row.get('item_numero', '')
-            sh.range(f'C{row_start}').value = row.get('descripcion', '')
-            sh.range(f'D{row_start}').value = str(row.get('detalles', '')).replace('nan', '')
-            sh.range(f'E{row_start}').value = row.get('cantidad', '')
-            sh.range(f'F{row_start}').value = esp_str
-            sh.range(f'G{row_start}').value = kg_str
-            row_start += 1
-
-        rango_tabla = f'B12:G{row_start-1}'
-        sh.range(rango_tabla).api.WrapText = True
-        sh.range(rango_tabla).api.VerticalAlignment = -4108 
-        
-        for border_id in [7, 8, 9, 10, 11, 12]:
-            sh.range(rango_tabla).api.Borders(border_id).Weight = 2
-
-        # --- SECCIÓN DE COMENTARIOS ---
-        if str(observaciones).strip() and str(observaciones) != "nan":
-            row_obs = row_start + 1
-            sh.range(f'B{row_obs}:G{row_obs}').api.Merge()
-            sh.range(f'B{row_obs}').value = f"Comentarios / Observaciones: {observaciones}"
-            sh.range(f'B{row_obs}').api.Font.Italic = True
-            sh.range(f'B{row_obs}').api.HorizontalAlignment = -4131 
-            sh.range(f'B{row_obs}').api.VerticalAlignment = -4108
-            sh.range(f'B{row_obs}').api.WrapText = True
-            sh.range(f'B{row_obs}:G{row_obs}').api.Borders.Weight = 2
-            row_start += 2
-
-        # --- SECCIÓN DE FIRMAS ---
-        row_firmas = row_start + 2
-        sh.range(f'B{row_firmas}:G{row_firmas}').api.Merge()
-        sh.range(f'B{row_firmas}').api.Font.Bold = True
-        sh.range(f'B{row_firmas}').api.HorizontalAlignment = -4108
-        sh.range(f'B{row_firmas}').color = (230, 230, 230)
-        sh.range(f'B{row_firmas}:G{row_firmas}').api.Borders.Weight = 2
-
-        r_tit = row_firmas + 1
-        sh.range(f'B{r_tit}:D{r_tit}').api.Merge()
-        sh.range(f'E{r_tit}:G{r_tit}').api.Merge()
-        sh.range(f'B{r_tit}:G{r_tit}').api.Font.Bold = True
-        sh.range(f'B{r_tit}:G{r_tit}').api.HorizontalAlignment = -4108
-        sh.range(f'B{r_tit}:G{r_tit}').api.VerticalAlignment = -4108
-        sh.range(f'B{r_tit}:G{r_tit}').api.WrapText = True
-        
-        r_img = row_firmas + 2
-        sh.range(f'{r_img}:{r_img}').api.RowHeight = 80
-        r_lin = row_firmas + 3
-
-        if tipo == "interna":
-            sh.range(f'B{row_firmas}').value = "CONTROL DE PRODUCCIÓN EN TALLER"
-            sh.range(f'B{r_tit}').value = "Fabricado por (Nombre y Firma Operario):"
-            sh.range(f'E{r_tit}').value = "Revisado por (Jefe de Taller):"
-            
-            sh.range(f'B{r_lin}:D{r_lin}').api.Merge()
-            sh.range(f'B{r_lin}').value = "___________________________________"
-            sh.range(f'B{r_lin}').api.HorizontalAlignment = -4108
-            sh.range(f'E{r_lin}:G{r_lin}').api.Merge()
-            sh.range(f'E{r_lin}').value = "___________________________________"
-            sh.range(f'E{r_lin}').api.HorizontalAlignment = -4108
-
-        else:
-            sh.range(f'B{row_firmas}').value = "SECCIÓN DE VALIDACIÓN Y FIRMAS"
-            sh.range(f'B{r_tit}').value = "Taller de Producción Termofrio\nJefe Producción HVAC: Lucio Zuñiga"
-            sh.range(f'B{r_tit}').api.RowHeight = 35
-            sh.range(f'E{r_tit}').value = "Firma Supervisor\nValidación de Calidad"
-
-            sh.range(f'B{r_lin}:D{r_lin}').api.Merge()
-            sh.range(f'B{r_lin}').value = "___________________________________\nLucio Zuñiga"
-            sh.range(f'B{r_lin}').api.Font.Bold = True
-            sh.range(f'B{r_lin}').api.HorizontalAlignment = -4108
-
-            sh.range(f'E{r_lin}:G{r_lin}').api.Merge()
-            sh.range(f'E{r_lin}').value = "___________________________________\nFirma / Timbre"
-            sh.range(f'E{r_lin}').api.Font.Bold = True
-            sh.range(f'E{r_lin}').api.HorizontalAlignment = -4108
-
-            if os.path.exists(FIRMA_PATH):
-                left_firma = sh.range(f'B{r_img}:D{r_img}').left + (sh.range(f'B{r_img}:D{r_img}').width - 100) / 2
-                sh.pictures.add(os.path.abspath(FIRMA_PATH), left=left_firma, top=sh.range(f'B{r_img}').top + 10, height=60)
-            
-            if os.path.exists(TIMBRE_PATH):
-                left_timbre = sh.range(f'E{r_img}:G{r_img}').left + (sh.range(f'E{r_img}:G{r_img}').width - 110) / 2
-                sh.pictures.add(os.path.abspath(TIMBRE_PATH), left=left_timbre, top=sh.range(f'E{r_img}').top + 5, height=75)
-
-        sh.range(f'B{r_tit}:D{r_lin}').api.Borders(7).Weight = 2 
-        sh.range(f'E{r_tit}:G{r_lin}').api.Borders(7).Weight = 2 
-        sh.range(f'G{r_tit}:G{r_lin}').api.Borders(10).Weight = 2 
-        sh.range(f'B{r_lin}:G{r_lin}').api.Borders(9).Weight = 2 
-
-        wb.save(os.path.join(temp_dir, f"temp_{clean_id}.xlsx"))
-        sh.api.ExportAsFixedFormat(0, ruta_pdf)
-        wb.close()
-        return ruta_pdf
-    except Exception as e:
-        print(f"Error generando PDF dinámico: {e}")
-        return None
-    finally:
-        app.quit()
-
+    pdf.output(ruta_pdf)
+    return ruta_pdf
 
 # --- INTERFAZ ---
 st.title("📦 Producción - Termofrio SPA")
@@ -635,7 +565,6 @@ with tab1:
                 
                 if st.button("💾 Guardar Pedido (Excel)", type="primary"):
                     
-                    # --- MAGIA AQUÍ: Ignoramos el número del Excel y calculamos el correcto ---
                     numero_oficial = obtener_siguiente_correlativo_obra(obra_input, enc['tf'])
 
                     nombre_seguro = str(numero_oficial).replace("/", "-").replace("\\", "-")
@@ -692,8 +621,8 @@ with tab1:
         with col_mat: mat_manual = st.selectbox("🛠️ Material General", get_materiales_disponibles(), key="mat_manual_admin")
         with col_aisl:
             st.markdown("<br>", unsafe_allow_html=True) 
-            aislacion_manual = st.checkbox("🧊 Incluir Aislación Interior", key="chk_aisl_admin")
-            forro_metalico_manual = st.checkbox("🛡️ Incluir Forro Metálico", key="chk_forro_admin")
+            aislacion_manual = st.checkbox("🧊 Incluir Aislación Interior", key="chk_aisl_admin_m")
+            forro_metalico_manual = st.checkbox("🛡️ Incluir Forro Metálico", key="chk_forro_admin_m")
 
         st.divider()
         st.markdown("#### 🛒 1. Agregar Piezas al Pedido")
@@ -728,7 +657,6 @@ with tab1:
                 if any(k in req_fields for k in ["H", "Dia1", "Dia2", "Angulo", "Casquetes"]):
                     cg2 = st.columns(5)
                     
-                    # --- AQUÍ CAMBIAMOS LA INTERFAZ VISUAL ---
                     if "H" in req_fields: l_h = cg2[0].text_input("Altura/Largo H (cm) *", placeholder="Ej: 150")
                     
                     lbl_dia1 = "Diámetro 1 (cm)" if desc_m in ["Caja Difusora", "Caja Difusora Esp."] else "Diámetro 1 (cm) *"
@@ -762,7 +690,6 @@ with tab1:
                 st.caption(f"📏 Sugerido por Norma SMACNA (250 Pa): {esp_smacna} mm")
                 
             with cw2:
-                # --- MAGIA EN TIEMPO REAL PARA EL PESO ---
                 peso_teorico = calcular_peso_teorico(desc_m, l_a, l_b, l_c, l_d, l_h, diam, diam2, esp_m)
                 
                 if peso_teorico > 0:
@@ -819,8 +746,6 @@ with tab1:
                         if l_c: dims_str.append(f"C:{l_c}cm")
                         if l_d: dims_str.append(f"D:{l_d}cm")
                         if l_d_desv: dims_str.append(f"d:{l_d_desv}cm")
-                        
-                        # --- AQUÍ GUARDAMOS EL STRING COMO cm ---
                         if l_h: dims_str.append(f"H:{l_h}cm")
                         
                         if diam and diam2: dims_str.append(f"Ø1:{diam} Ø2:{diam2}cm")
@@ -882,8 +807,6 @@ with tab1:
                 if obra_manual == "Seleccione Obra..." or not quien_manual.strip() or not correo_manual.strip():
                     st.error("❌ Falta información: Obra, Solicitante y Correo son campos obligatorios.")
                 else:
-                    
-                    # --- MAGIA AQUÍ TAMBIÉN ---
                     numero_oficial = obtener_siguiente_correlativo_obra(obra_manual, tf_manual)
 
                     conn = get_connection(); c = conn.cursor()
@@ -952,7 +875,6 @@ with tab2:
             })
             st.dataframe(df_items_display, use_container_width=True, hide_index=True)
             
-          # --- Alerta visual en pantalla de MEN, Comentarios y EXTRAS ---
             alertas_ui = []
             if "Aislación" in str(fila_pedido_ver['fuente']): alertas_ui.append("🧊 AISLACIÓN INTERIOR")
             if "Forro Metálico" in str(fila_pedido_ver['fuente']): alertas_ui.append("🛡️ FORRO METÁLICO")
@@ -970,7 +892,7 @@ with tab2:
             
             with col_doc1:
                 if st.button("📄 Generar Orden de Trabajo (PDF)", key="btn_ot_interna"):
-                    with st.spinner("Generando Orden de Trabajo..."):
+                    with st.spinner("Generando Orden de Trabajo de forma nativa..."):
                         ruta_pdf_ot = generar_pdf_manual(
                             pedido_num=fila_pedido_ver['num_pedido'],
                             tf=fila_pedido_ver['tf'],
@@ -1038,7 +960,7 @@ with tab2:
             st.dataframe(pend_fifo[['Turno_Fila', 'nivel_urgencia', 'num_pedido', 'obra_codigo', 'quien_envia', 'fecha_recepcion', 'Entrega Estimada']], use_container_width=True, hide_index=True)
 
             with st.expander("Ver Herramienta de Correos y Notificaciones", expanded=False):
-                st.markdown("##### ✉️ PASO 1: Notificar Programación al Cliente (Outlook)")
+                st.markdown("##### ✉️ PASO 1: Notificar Programación al Cliente (Vía Nube)")
                 st.info(f"El promedio de entrega histórico del taller es de **{promedio_dias_real} días**.")
                 sel_p = st.selectbox("Seleccionar Pedido a notificar:", pend_fifo['num_pedido'].astype(str) + " / " + pend_fifo['obra_codigo'])
                 d = pend_fifo[pend_fifo['num_pedido'].astype(str) + " / " + pend_fifo['obra_codigo'] == sel_p].iloc[0]
@@ -1071,23 +993,19 @@ Actualmente, su pedido se encuentra en el <b>Turno N° {d['Turno_Fila']}</b> de 
 <p>Agradecemos su comprensión.<br><b>Departamento de Producción - Termofrio SPA</b></p>
 </div>"""
                 
-                if correo_destino: st.success(f"✅ Se asoció el correo: {correo_destino}")
+                if correo_destino: st.success(f"✅ Correo asociado listo para envío a: {correo_destino}")
                 else: st.warning(f"⚠️ No se encontró correo para '{solicitante_db}'. Puedes agregarlo en la pestaña de Configuración.")
 
-                if st.button("📧 Abrir Borrador en Outlook", key="btn_notif_outlook"):
-                    pythoncom.CoInitialize()
-                    try:
-                        outlook = win32.Dispatch("Outlook.Application")
-                        mail = outlook.CreateItem(0)
-                        if correo_destino: 
-                            mail.To = correo_destino
-                            mail.Recipients.ResolveAll()
-                        mail.Subject = asunto_correo
-                        mail.HTMLBody = texto_html
-                        mail.Display(True) 
-                        st.success("✅ Borrador abierto en su ventana de Outlook. ¡Revíselo y haga clic en Enviar!")
-                    except Exception as e:
-                        st.error(f"Error al conectar con Outlook: {e}")
+                if st.button("📧 Enviar Notificación (Vía Sistema)", key="btn_notif_nube"):
+                    if not correo_destino:
+                        st.error("No se puede enviar porque no hay un correo de destino válido configurado.")
+                    else:
+                        with st.spinner("Enviando correo desde la nube..."):
+                            exito = enviar_correo_api(correo_destino, asunto_correo, texto_html)
+                            if exito:
+                                st.success("✅ ¡Notificación enviada con éxito directamente al cliente!")
+                            else:
+                                st.error("❌ Ocurrió un error al enviar el correo. Verifique la API o la conexión.")
         
         st.divider()
 
@@ -1115,54 +1033,37 @@ Actualmente, su pedido se encuentra en el <b>Turno N° {d['Turno_Fila']}</b> de 
                 
                 if st.button("🚀 Procesar PDF Automático", key="btn_proc_pdf"):
                     fila_pdf = term[term['num_pedido'].astype(str) + " / " + term['obra_codigo']==sel_pdf].iloc[0]
-                    ruta_excel_guardado = fila_pdf.get('ruta_excel', None)
                     
-                    if pd.notna(ruta_excel_guardado) and os.path.exists(ruta_excel_guardado) and str(ruta_excel_guardado) != "Generado Manualmente":
-                        with st.spinner("Buscando en Bóveda, firmando e inyectando Kilos Reales..."):
-                            with open(ruta_excel_guardado, "rb") as f:
-                                archivo_memoria = io.BytesIO(f.read())
-                                
-                            ruta_pdf = generar_pdf_firmado(archivo_memoria, fila_pdf['num_pedido'], fila_pdf['kg_reales'])
-                            if ruta_pdf:
-                                st.session_state.pdf_tmp = ruta_pdf
-                                st.session_state.pdf_num = fila_pdf['num_pedido']
-                                st.session_state.pdf_obra = fila_pdf['obra_codigo']
-                                st.session_state.pdf_solic = str(fila_pdf.get('quien_envia', '')).strip()
-                                st.session_state.pdf_kg = fila_pdf['kg_reales']
-                                st.success("✅ Archivo PDF Generado exitosamente desde Excel.")
-                    
-                    elif str(ruta_excel_guardado) == "Generado Manualmente":
-                        with st.spinner("Generando PDF Dinámico para pedido manual..."):
-                            conn_pdf = get_connection()
-                            df_items_pdf = pd.read_sql(f"SELECT * FROM items_pedido WHERE pedido_id={fila_pdf['id']}", conn_pdf)
-                            conn_pdf.close()
-                            
-                            obs_query = pd.read_sql(f"SELECT observaciones, men FROM pedidos WHERE id={fila_pdf['id']}", get_connection())
-                            obs_txt_fin = obs_query.iloc[0]['observaciones'] if not obs_query.empty else ""
-                            men_txt_fin = obs_query.iloc[0]['men'] if not obs_query.empty and 'men' in obs_query.columns else ""
+                    with st.spinner("Generando PDF Dinámico nativo en la Nube..."):
+                        conn_pdf = get_connection()
+                        df_items_pdf = pd.read_sql(f"SELECT * FROM items_pedido WHERE pedido_id={fila_pdf['id']}", conn_pdf)
+                        obs_query = pd.read_sql(f"SELECT observaciones, men FROM pedidos WHERE id={fila_pdf['id']}", conn_pdf)
+                        conn_pdf.close()
+                        
+                        obs_txt_fin = obs_query.iloc[0]['observaciones'] if not obs_query.empty else ""
+                        men_txt_fin = obs_query.iloc[0]['men'] if not obs_query.empty and 'men' in obs_query.columns else ""
 
-                            ruta_pdf = generar_pdf_manual(
-                                pedido_num=fila_pdf['num_pedido'],
-                                tf=fila_pdf['tf'],
-                                obra=fila_pdf['obra_codigo'],
-                                ceco=fila_pdf['ceco'],
-                                solicitante=fila_pdf['quien_envia'],
-                                items_df=df_items_pdf,
-                                kg_reales=fila_pdf['kg_reales'],
-                                fuente=fila_pdf['fuente'],
-                                observaciones=obs_txt_fin,
-                                tipo="despacho",
-                                men=men_txt_fin
-                            )
-                            if ruta_pdf:
-                                st.session_state.pdf_tmp = ruta_pdf
-                                st.session_state.pdf_num = fila_pdf['num_pedido']
-                                st.session_state.pdf_obra = fila_pdf['obra_codigo']
-                                st.session_state.pdf_solic = str(fila_pdf.get('quien_envia', '')).strip()
-                                st.session_state.pdf_kg = fila_pdf['kg_reales']
-                                st.success("✅ Archivo PDF Dinámico creado exitosamente.")
-                    else:
-                        st.error("❌ El Excel original no se encontró en la Bóveda. (Probablemente es un pedido antiguo).")
+                        ruta_pdf = generar_pdf_manual(
+                            pedido_num=fila_pdf['num_pedido'],
+                            tf=fila_pdf['tf'],
+                            obra=fila_pdf['obra_codigo'],
+                            ceco=fila_pdf['ceco'],
+                            solicitante=fila_pdf['quien_envia'],
+                            items_df=df_items_pdf,
+                            kg_reales=fila_pdf['kg_reales'],
+                            fuente=fila_pdf['fuente'],
+                            observaciones=obs_txt_fin,
+                            tipo="despacho",
+                            men=men_txt_fin
+                        )
+                        
+                        if ruta_pdf:
+                            st.session_state.pdf_tmp = ruta_pdf
+                            st.session_state.pdf_num = fila_pdf['num_pedido']
+                            st.session_state.pdf_obra = fila_pdf['obra_codigo']
+                            st.session_state.pdf_solic = str(fila_pdf.get('quien_envia', '')).strip()
+                            st.session_state.pdf_kg = fila_pdf['kg_reales']
+                            st.success("✅ Archivo PDF Generado exitosamente sin depender de Excel.")
                 
                 if 'pdf_tmp' in st.session_state and os.path.exists(st.session_state.pdf_tmp):
                     st.markdown("<br>", unsafe_allow_html=True)
@@ -1170,7 +1071,7 @@ Actualmente, su pedido se encuentra en el <b>Turno N° {d['Turno_Fila']}</b> de 
                     with open(st.session_state.pdf_tmp, "rb") as f:
                         col_dl.download_button("📥 Descargar PDF a mi PC", f, file_name=f"Pedido_Despacho_{st.session_state.pdf_num}.pdf", key="btn_dl_pdf")
                     
-                    if col_mail.button("📧 Outlook: Enviar Despacho Adjunto", key="btn_out_adjunto"):
+                    if col_mail.button("📧 Enviar Despacho Adjunto (Vía Sistema)", key="btn_out_adjunto"):
                         correo_dest = ""
                         try:
                             conn_c = get_connection()
@@ -1187,25 +1088,18 @@ Actualmente, su pedido se encuentra en el <b>Turno N° {d['Turno_Fila']}</b> de 
 <p>Quedamos a su disposición para coordinar la entrega.</p>
 <p>Saludos cordiales,<br><b>Departamento de Producción - Termofrio SPA</b></p>
 </div>"""
-                        pythoncom.CoInitialize()
-                        try:
-                            outlook = win32.Dispatch("Outlook.Application")
-                            mail = outlook.CreateItem(0)
-                            if correo_dest: 
-                                mail.To = correo_dest
-                                mail.Recipients.ResolveAll()
-                            mail.Subject = f"Pedido Listo para Retiro/Despacho - N° {st.session_state.pdf_num} - Obra {st.session_state.pdf_obra}"
-                            mail.HTMLBody = html_despacho
-                            mail.Attachments.Add(os.path.abspath(st.session_state.pdf_tmp))
-                            mail.Display(True) 
-                            st.success("✅ Correo con PDF abierto en Outlook. ¡Revíselo y presione Enviar!")
-                        except Exception as e:
-                            st.error(f"Error al conectar con Outlook: {e}")
+                        if not correo_dest:
+                            st.error("No se pudo enviar: No hay correo configurado para el solicitante.")
+                        else:
+                            with st.spinner("Enviando correo con PDF adjunto..."):
+                                asun = f"Pedido Listo para Retiro/Despacho - N° {st.session_state.pdf_num} - Obra {st.session_state.pdf_obra}"
+                                e = enviar_correo_api(correo_dest, asun, html_despacho, attachment_path=st.session_state.pdf_tmp)
+                                if e: st.success("✅ ¡Correo de despacho enviado exitosamente con el PDF adjunto!")
+                                else: st.error("❌ Fallo en el envío del correo.")
         st.divider()
         st.subheader("🚚 PASO 4: Registrar Salida a Terreno (Despacho)")
         st.caption("Marca los pedidos que ya fueron retirados físicamente del taller para descontarlos de la tarjeta de Listos en Taller.")
         
-        # Prevenimos nulos en pedidos antiguos
         if 'estado_despacho' not in dfp.columns: dfp['estado_despacho'] = 'En Taller'
         dfp['estado_despacho'] = dfp['estado_despacho'].fillna('En Taller')
         
@@ -1267,7 +1161,6 @@ with tab3:
                 "tf": st.column_config.TextColumn("TF", disabled=True),
                 "ceco": st.column_config.TextColumn("CECO", disabled=True),
                 "nombre": st.column_config.TextColumn("Nombre", disabled=True),
-                # Quitamos el min_value=0.0 para permitir ajustes negativos libres
                 "kg_contrato": st.column_config.NumberColumn("Base Contrato", step=100.0, format="%.1f"),
                 "kg_adicionales": st.column_config.NumberColumn("Adicionales", step=100.0, format="%.1f"),
                 "kg_hist_galv": st.column_config.NumberColumn("Hist. Galv", step=10.0, format="%.1f"),
@@ -1619,14 +1512,12 @@ with tab5:
             df_merge['Fierro (FE)'] = df_merge['FE'] + df_merge['kg_hist_fe']
             df_merge['Acero Inox'] = df_merge['INOX'] + df_merge['kg_hist_inox']
             
-           # --- REEMPLAZAR DESDE AQUÍ ---
             st.subheader("📊 Avance y Saldo de Contratos (SOLO GALVANIZADO)")
             st.caption("Visualiza el total del contrato, lo que ya se fabricó y **el saldo que va restando**.")
             
             df_general = df_merge[(df_merge['kg_contrato'] > 0) | (df_merge['Galvanizado Total'] > 0)].copy()
             
             if not df_general.empty:
-                # LA MAGIA MATEMÁTICA: Calculamos explícitamente el saldo restante
                 df_general['Total Contratado'] = df_general['kg_contrato'] + df_general['kg_adicionales']
                 df_general['Saldo Restante'] = df_general['Total Contratado'] - df_general['Galvanizado Total']
                 
@@ -1640,7 +1531,6 @@ with tab5:
                 df_melt = df_plot_general.melt('obra_codigo', var_name='Categoría', value_name='Kilos')
                 df_melt_labels = df_melt[df_melt['Kilos'] != 0] 
                 
-                # Colores intuitivos: Contrato (Azul), Fabricado (Naranja), Saldo Restante (Verde)
                 color_scale_avance = alt.Scale(
                     domain=['1. Total Contrato', '2. Ya Fabricado', '3. Saldo Restante'],
                     range=['#2980b9', '#e67e22', '#27ae60'] 
@@ -1672,7 +1562,6 @@ with tab5:
 
             else:
                 st.info("Ingresa los datos del contrato en Configuración para ver las comparativas.")
-            # --- HASTA AQUÍ EL REEMPLAZO ---
                     
             st.divider()
             st.subheader("🧱 Total Kilos Fabricados por Material")

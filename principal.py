@@ -11,8 +11,7 @@ import altair as alt
 import base64
 import io
 import tempfile
-import pythoncom
-import xlwings as xw
+from fpdf import FPDF
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -464,134 +463,118 @@ def calcular_peso_teorico(desc, l_a, l_b, l_c, l_d, l_h, diam, diam2, esp):
         return peso_base * 1.15 
     except: return 0.0
 
+
 def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_est, observaciones="", men=""):
     clean_id = str(pedido_num).replace("/", "-").replace("\\", "-").strip()
     temp_dir = tempfile.gettempdir()
     ruta_pdf = os.path.join(temp_dir, f"Comprobante_{clean_id}.pdf")
-
-    pythoncom.CoInitialize()
-    app = xw.App(visible=False)
-    try:
-        wb = app.books.add()
-        sh = wb.sheets[0]
-
-        sh.api.PageSetup.Orientation = 2 
-        sh.api.PageSetup.Zoom = False
-        sh.api.PageSetup.FitToPagesWide = 1
-        sh.api.PageSetup.FitToPagesTall = False
-        sh.api.PageSetup.CenterHorizontally = True
-        sh.api.PageSetup.LeftMargin = 36  
-        sh.api.PageSetup.RightMargin = 36
-
-        sh.range('A:A').column_width = 2
-        sh.range('B:B').column_width = 16  
-        sh.range('C:C').column_width = 18  
-        sh.range('D:D').column_width = 48  
-        sh.range('E:E').column_width = 10   
-        sh.range('F:F').column_width = 11   
-        sh.range('G:G').column_width = 13  
-
-        sh.range('2:4').row_height = 25
-        if os.path.exists(LOGO_PATH):
-            sh.pictures.add(os.path.abspath(LOGO_PATH), left=sh.range('B2').left, top=sh.range('B2').top, height=80)
-
-        sh.range('B5:G5').api.Merge()
-        sh.range('B5').value = "COMPROBANTE DE SOLICITUD DE FABRICACIÓN - TERMOFRIO SPA"
-        sh.range('B5').api.Font.Color = 0x555555 
-        sh.range('B5').api.Font.Bold = True
-        sh.range('B5').api.Font.Size = 14
-        sh.range('B5').api.HorizontalAlignment = -4108
-
-        sh.range('B7:G10').color = (245, 245, 245)
-        sh.range('B7').value = "N° de Pedido:"
-        sh.range('C7:D7').api.Merge()
-        sh.range('C7').value = f"{pedido_num}"
-        
-        sh.range('E7:G7').api.Merge()
-        try: kg_est_formateado = f"{float(kg_est):.1f}"
-        except: kg_est_formateado = str(kg_est)
-        
-        sh.range('E7').value = f"KG ESTIMADOS TOTALES: {kg_est_formateado} Kg"
-        sh.range('E7').api.Font.Color = 0x000000
-
-        sh.range('B8').value = "Obra Destino:"
-        sh.range('C8:D8').api.Merge()
-        sh.range('C8').value = f"{obra}"
-        sh.range('E8:G8').api.Merge()
-        sh.range('E8').value = f"Fecha Emisión: {datetime.now().strftime('%d/%m/%Y')}"
-
-        sh.range('B9').value = "Código TF ó CC:"
-        sh.range('C9').value = f"{tf}"
-        sh.range('D9').value = f"CECO: {ceco}"
-        sh.range('E9:G9').api.Merge()
-        if men and str(men).strip() and str(men) != "nan":
-            sh.range('E9').value = f"MEN: {men}"
-            sh.range('E9').api.Font.Bold = True
-
-        sh.range('B10').value = "Solicitante:"
-        sh.range('C10:D10').api.Merge()
-        sh.range('C10').value = f"{solicitante}"
-        
-        sh.range('C7:D10').api.HorizontalAlignment = -4131 
-        sh.range('B7:B10').api.Font.Bold = True
-        sh.range('D9').api.Font.Bold = True
-        sh.range('E7:E8').api.Font.Bold = True
-        sh.range('B7:G10').api.Borders.Weight = 2
-
-        headers = ["Ítem N°", "Descripción", "Medidas y Especificaciones", "Cant.", "Espesor", "Kg Est."]
-        sh.range('B12').value = headers[0]
-        sh.range('C12').value = headers[1]
-        sh.range('D12').value = headers[2]
-        sh.range('E12').value = headers[3]
-        sh.range('F12').value = headers[4]
-        sh.range('G12').value = headers[5]
-        
-        sh.range('B12:G12').api.Font.Bold = True
-        sh.range('B12:G12').color = (105, 105, 105) 
-        sh.range('B12:G12').api.Font.Color = 16777215 
-        sh.range('B12:G12').api.HorizontalAlignment = -4108
-
-        row_start = 13
-        for _, row in items_df.iterrows():
-            try: kg_str = f"{float(row.get('peso_total', 0)):.2f}"
-            except: kg_str = str(row.get('peso_total', ''))
+    
+    class PDF(FPDF):
+        def header(self):
+            # Colores corporativos: Azul Oscuro
+            self.set_fill_color(27, 54, 93)
+            self.rect(0, 0, 210, 35, 'F')
             
-            try: esp_str = f"{float(row.get('espesor', 0)):.1f}"
-            except: esp_str = str(row.get('espesor', ''))
+            self.set_font("Arial", "B", 16)
+            self.set_text_color(255, 255, 255)
+            self.cell(0, 12, "TERMOFRIO LTDA.", ln=True, align="L")
+            self.set_font("Arial", "", 11)
+            self.cell(0, 4, "Portal de Pedidos - Comprobante de Recepción", ln=True, align="L")
+            self.ln(12)
 
-            sh.range(f'B{row_start}').value = row.get('item_numero', '') if 'item_numero' in row else row.get('item_num', '')
-            sh.range(f'C{row_start}').value = row.get('descripcion', '') if 'descripcion' in row else row.get('Descripción', '')
-            sh.range(f'D{row_start}').value = str(row.get('detalles', row.get('Detalles/Medidas', ''))).replace('nan', '')
-            sh.range(f'E{row_start}').value = row.get('cantidad', '') if 'cantidad' in row else row.get('Cantidad', '')
-            sh.range(f'F{row_start}').value = esp_str
-            sh.range(f'G{row_start}').value = kg_str
-            row_start += 1
+        def footer(self):
+            self.set_y(-15)
+            self.set_font("Arial", "I", 8)
+            self.set_text_color(128, 128, 128)
+            self.cell(0, 10, f"Página {self.page_no()}/{{nb}} - Documento generado automáticamente", align="C")
 
-        rango_tabla = f'B12:G{row_start-1}'
-        sh.range(rango_tabla).api.WrapText = True
-        sh.range(rango_tabla).api.VerticalAlignment = -4108 
-        for border_id in [7, 8, 9, 10, 11, 12]:
-            sh.range(rango_tabla).api.Borders(border_id).Weight = 2
-
-        if str(observaciones).strip() and str(observaciones) != "nan":
-            row_obs = row_start + 1
-            sh.range(f'B{row_obs}:G{row_obs}').api.Merge()
-            sh.range(f'B{row_obs}').value = f"Comentarios / Observaciones: {observaciones}"
-            sh.range(f'B{row_obs}').api.Font.Italic = True
-            sh.range(f'B{row_obs}').api.HorizontalAlignment = -4131 
-            sh.range(f'B{row_obs}').api.VerticalAlignment = -4108
-            sh.range(f'B{row_obs}').api.WrapText = True
-            sh.range(f'B{row_obs}:G{row_obs}').api.Borders.Weight = 2
-
-        wb.save(os.path.join(temp_dir, f"temp_{clean_id}.xlsx"))
-        sh.api.ExportAsFixedFormat(0, ruta_pdf)
-        wb.close()
-        return ruta_pdf
-    except Exception as e:
-        print(f"Error generando PDF: {e}")
-        return None
-    finally:
-        app.quit()
+    # Inicializar PDF en formato A4
+    pdf = PDF(orientation="P", unit="mm", format="A4")
+    pdf.alias_nb_pages()
+    pdf.add_page()
+    pdf.set_text_color(51, 51, 51) # Gris oscuro para texto
+    
+    # --- BLOQUE DE INFORMACIÓN GENERAL ---
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, f"DETALLES DEL PEDIDO: {pedido_num}", ln=True)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(4)
+    
+    pdf.set_font("Arial", "", 10)
+    # Tabla informativa de dos columnas
+    datos = [
+        ("Código TF / CC:", str(tf), "Obra Destino:", str(obra)),
+        ("CECO:", str(ceco), "Solicitante:", str(solicitante)),
+        ("M.E.N:", str(men), "Peso Est. Total:", f"{kg_est:.2f} Kg" if isinstance(kg_est, (int, float)) else str(kg_est))
+    ]
+    
+    for row in datos:
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(35, 6, row[0])
+        pdf.set_font("Arial", "", 10)
+        pdf.cell(60, 6, row[1])
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(30, 6, row[2])
+        pdf.set_font("Arial", "", 10)
+        pdf.cell(65, 6, row[3], ln=True)
+    
+    pdf.ln(6)
+    
+    # --- TABLA DE ITEMS ---
+    pdf.set_font("Arial", "B", 11)
+    pdf.cell(0, 8, "DETALLE DE PIEZAS SOLICITADAS", ln=True)
+    pdf.ln(2)
+    
+    # Encabezados de tabla
+    pdf.set_fill_color(232, 238, 245) # Azul muy claro
+    pdf.set_font("Arial", "B", 9)
+    pdf.cell(15, 7, "Item", border=1, fill=True, align="C")
+    pdf.cell(35, 7, "Pieza", border=1, fill=True)
+    pdf.cell(105, 7, "Especificaciones / Medidas", border=1, fill=True)
+    pdf.cell(15, 7, "Cant.", border=1, fill=True, align="C")
+    pdf.cell(20, 7, "Peso (Kg)", border=1, fill=True, align="C", ln=True)
+    
+    # Filas de la tabla (Extracción desde el DataFrame de ítems)
+    pdf.set_font("Arial", "", 9)
+    for _, fila in items_df.iterrows():
+        # Validar nombres de columnas según cómo los maneje tu dataframe
+        item_id = str(fila.get('Item', fila.get('item_num', '')))
+        pieza = str(fila.get('Pieza', fila.get('Descripción', '')))
+        especs = str(fila.get('Especificaciones', fila.get('Detalles/Medidas', '')))
+        cant = str(fila.get('Cant.', fila.get('Cantidad', '')))
+        peso = str(fila.get('Peso (Kg)', fila.get('Kg', '')))
+        
+        # Guardamos la posición vertical por si las especificaciones tienen salto de línea
+        top_y = pdf.get_y()
+        
+        # Dibujamos las celdas con control de altura múltiple para evitar desbordes
+        pdf.cell(15, 6, item_id, border=1, align="C")
+        pdf.cell(35, 6, pieza[:18], border=1) # Truncamos si es muy largo
+        
+        # El campo de especificaciones puede tener saltos de línea largos
+        pos_x = pdf.get_x()
+        pdf.multi_cell(105, 6, especs, border=1)
+        end_y = pdf.get_y()
+        
+        # Volvemos a la línea para terminar las celdas restantes de la fila
+        pdf.set_xy(pos_x + 105, top_y)
+        pdf.cell(15, end_y - top_y, cant, border=1, align="C")
+        pdf.cell(20, end_y - top_y, peso, border=1, align="C", ln=True)
+        pdf.set_y(end_y) # Posicionamos para la siguiente fila
+        
+    pdf.ln(6)
+    
+    # --- OBSERVACIONES ---
+    if observaciones:
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(0, 6, "Observaciones adicionales:", ln=True)
+        pdf.set_font("Arial", "I", 10)
+        pdf.multi_cell(0, 5, str(observaciones), border=1)
+        pdf.ln(4)
+        
+    # Guardar archivo binario puro
+    pdf.output(ruta_pdf)
+    return ruta_pdf
 
 # ====================================================================
 # VISTA EXCLUSIVA PARA CLIENTES / SUPERVISORES
@@ -1084,14 +1067,14 @@ if st.session_state.rol == "cliente":
                 conn.commit(); conn.close()
                 st.session_state.carrito_cliente = [] 
                     
-                    # --- MAGIA VISUAL: MENSAJE Y GLOBOS ---
+                # --- MAGIA VISUAL: MENSAJE Y GLOBOS ---
                 st.success(f"✅ ¡Pedido enviado con éxito al Taller! Se asignó el folio oficial: {numero_oficial}")
                 st.balloons() # Lanza la animación en pantalla
                     
                 import time
                 time.sleep(2.5) # Pausamos el código 2.5 segundos para que los usuarios disfruten los globos
                     
-            st.rerun() # Ahora sí, limpiamos la pantalla
+                st.rerun() # Ahora sí, limpiamos la pantalla
         else: st.info("No hay piezas en este pedido todavía.")
     st.stop()
 

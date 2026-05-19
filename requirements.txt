@@ -3,3 +3,4 @@ pandas
 altair
 resend
 openpyxl
+fpdf2

@@ -9,11 +9,9 @@ import numpy as np
 import qrcode
 import base64
 import time 
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
-from reportlab.lib import colors 
 import io
+import tempfile
+from fpdf import FPDF
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Gestión Mantención", layout="wide")
@@ -159,16 +157,12 @@ def obtener_puntos(maquina_id):
     if any(x in m for x in ["CILINDRADORA", "GUILLOTINA", "PLEGADORA"]):
         return ["Limpieza General", "Engrase / Lubricación", "Estado de Cuchillos / Prismas / Rodillos", "Ajuste Mecánico y Manivelas"]
         
-    # --- CORRECCIÓN DEFINITIVA: Buscamos PESTANERA (con N) y PESTAÑERA (con Ñ) ---
     if any(x in m for x in ["RODONADORA", "PESTAÑERA", "PESTANERA", "TDF", "EMBALLETADORA"]):
         if "MANUAL" in m and "RODONADORA" in m:
             return ["Limpieza General", "Engrase / Lubricación", "Estado de Rodillos / Ejes", "Ajuste Mecánico y Manivelas"]
         else:
             return ["Limpieza General", "Tablero Eléctrico y Cables", "Funcionamiento Motor", "Rodamientos y Guías", "Protecciones Seguridad"]
             
-    return ["Limpieza General", "Tablero Eléctrico y Cables", "Funcionamiento Motor", "Rodamientos y Guías", "Protecciones Seguridad"]
-            
-    # Pauta por defecto para equipos no clasificados
     return ["Limpieza General", "Tablero Eléctrico y Cables", "Funcionamiento Motor", "Rodamientos y Guías", "Protecciones Seguridad"]
 
 def obtener_estado_semana(maquina_id):
@@ -185,152 +179,131 @@ def obtener_estado_semana(maquina_id):
     except: return None
     finally: conn.close()
 
-# --- FUNCIÓN DE GENERACIÓN DE PDF MEJORADA (CON FOTO CORREGIDA Y LOGOS) ---
+# --- FUNCIÓN DE GENERACIÓN DE PDF NATIVA (FPDF2) ---
 def generar_pdf_checklist(maquina, operador, fecha_dt, checks_lista, estado, obs, firma_path, foto_evidencia_path=None):
     nombre_seguro = "".join([c if c.isalnum() else "_" for c in maquina])
     fecha_str_file = fecha_dt.strftime('%Y%m%d_%H%M%S')
     nombre_pdf = f"{nombre_seguro}_{fecha_str_file}.pdf"
     ruta_pdf = os.path.join(CARPETA_INFORMES, nombre_pdf)
-    try:
-        c = canvas.Canvas(ruta_pdf, pagesize=letter)
-        w, h = letter
-        
-        # --- PÁGINA 1: DATOS DEL CHECKLIST ---
-        c.setFillColor(colors.darkblue)
-        c.rect(0, h - 80, w, 80, fill=1, stroke=0)
-        
-        if os.path.exists(LOGO_TERMOFRIO):
-            try: c.drawImage(ImageReader(LOGO_TERMOFRIO), 15, h - 75, width=150, height=70, mask='auto', preserveAspectRatio=True)
-            except Exception as e: print(f"Error cargando logo termofrio: {e}")
-            
-        if os.path.exists(LOGO_ISO):
-            try: c.drawImage(ImageReader(LOGO_ISO), w - 85, h - 75, width=70, height=70, mask='auto', preserveAspectRatio=True)
-            except Exception as e: print(f"Error cargando logo ISO: {e}")
-
-        c.setFillColor(colors.white)
-        c.setFont("Helvetica-Bold", 16)
-        c.drawCentredString(w/2, h - 40, "REPORTE DE INSPECCIÓN TÉCNICA")
-        c.setFont("Helvetica", 12)
-        c.drawCentredString(w/2, h - 60, "TERMOFRIO SPA")
-        
-        c.setFillColor(colors.black)
-        y_info = h - 110
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(50, y_info, f"Máquina:"); c.setFont("Helvetica", 12); c.drawString(120, y_info, maquina)
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(350, y_info, f"Fecha:"); c.setFont("Helvetica", 12); c.drawString(400, y_info, fecha_dt.strftime('%d/%m/%Y %H:%M'))
-        
-        y_info -= 20
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(50, y_info, f"Operador/Técnico:"); c.setFont("Helvetica", 12); c.drawString(170, y_info, operador)
-        
-        y_info -= 40
-        c.setFont("Helvetica-Bold", 16)
-        c.drawCentredString(w/2, y_info, "ESTADO DEL EQUIPO")
-        y_info -= 25
-        c.setFont("Helvetica-Bold", 20)
-        if estado == "CON FALLA":
-            c.setFillColor(colors.red); texto_estado = "⛔ NO OPERATIVO / CON FALLA"
-        else:
-            c.setFillColor(colors.green); texto_estado = "✅ OPERATIVO"
-        c.drawCentredString(w/2, y_info, texto_estado)
-        c.setFillColor(colors.black)
-        c.setStrokeColor(colors.gray)
-        c.line(50, y_info - 20, w - 50, y_info - 20)
-        
-        y = y_info - 50
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(50, y, "Detalle Verificado:")
-        y -= 25
-        c.setFont("Helvetica", 11)
-        
-        for item in checks_lista:
-            if "No Cumple" in item or "FALLA" in item:
-                c.setFillColor(colors.red); c.drawString(60, y, "[X]")
+    
+    class PDFChecklist(FPDF):
+        def header(self):
+            if "critica" in str(estado).lower() or "falla" in str(estado).lower() or "no" in str(estado).lower():
+                self.set_fill_color(192, 57, 43) # Rojo Alerta
             else:
-                c.setFillColor(colors.green); c.drawString(60, y, "[OK]")
-            c.setFillColor(colors.black)
-            c.drawString(90, y, item)
-            y -= 20
-            if y < 100: c.showPage(); y = h - 50
+                self.set_fill_color(39, 174, 96) # Verde Seguro
+                
+            self.rect(0, 0, 210, 30, 'F')
             
-        y -= 20
-        c.setFillColor(colors.darkblue)
-        c.rect(50, y, w-100, 20, fill=1, stroke=0)
-        c.setFillColor(colors.white)
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(60, y+5, "Observaciones Registradas")
-        
-        y -= 20
-        c.setFillColor(colors.black); c.setFont("Helvetica", 10)
-        if obs.strip():
-            txt_obj = c.beginText(60, y); txt_obj.textLines(obs); c.drawText(txt_obj)
+            if os.path.exists(LOGO_TERMOFRIO):
+                try: self.image(LOGO_TERMOFRIO, 10, 5, 35)
+                except: pass
+            if os.path.exists(LOGO_ISO):
+                try: self.image(LOGO_ISO, 175, 5, 20)
+                except: pass
+
+            self.set_font("Arial", "B", 14)
+            self.set_text_color(255, 255, 255)
+            self.set_xy(50, 8)
+            self.cell(0, 8, f"INFORME DE MANTENCIÓN PREVENTIVA", ln=True, align="L")
+            self.set_font("Arial", "", 10)
+            self.set_x(50)
+            self.cell(0, 4, f"Estado General de Máquina: {estado}", ln=True, align="L")
+            self.ln(10)
+
+        def footer(self):
+            self.set_y(-15)
+            self.set_font("Arial", "I", 8)
+            self.set_text_color(128, 128, 128)
+            self.cell(0, 10, f"Ficha Técnica de Inspección - Termofrio Taller", align="C")
+
+    pdf = PDFChecklist()
+    pdf.alias_nb_pages()
+    pdf.add_page()
+    pdf.set_text_color(51, 51, 51)
+    
+    pdf.set_font("Arial", "B", 11)
+    pdf.cell(0, 6, "INFORMACIÓN DE LA INSPECCIÓN", ln=True)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(3)
+    
+    pdf.set_font("Arial", "", 10)
+    pdf.cell(40, 6, "Máquina Evaluada:", align="L"); pdf.set_font("Arial", "B"); pdf.cell(0, 6, str(maquina), ln=True); pdf.set_font("Arial", "")
+    pdf.cell(40, 6, "Técnico/Operador:", align="L"); pdf.set_font("Arial", "B"); pdf.cell(0, 6, str(operador), ln=True); pdf.set_font("Arial", "")
+    pdf.cell(40, 6, "Fecha y Hora:", align="L"); pdf.set_font("Arial", "B"); pdf.cell(0, 6, fecha_dt.strftime('%d/%m/%Y %H:%M:%S'), ln=True)
+    pdf.ln(6)
+    
+    pdf.set_font("Arial", "B", 11)
+    pdf.cell(0, 6, "PUNTOS VERIFICADOS", ln=True)
+    pdf.ln(2)
+    
+    pdf.set_fill_color(245, 245, 245)
+    pdf.set_font("Arial", "B", 9)
+    pdf.cell(130, 7, "Concepto / Componente Evaluado", border=1, fill=True)
+    pdf.cell(60, 7, "Estado Siniestro / Respuesta", border=1, fill=True, align="C", ln=True)
+    
+    pdf.set_font("Arial", "", 9)
+    for elemento in checks_lista:
+        if ":" in str(elemento):
+            partes = str(elemento).split(":", 1)
+            nombre_punto = partes[0].strip()
+            estado_punto = partes[1].strip()
         else:
-            c.drawString(60, y, "Sin observaciones adicionales.")
+            nombre_punto = str(elemento)
+            estado_punto = "Revisado / OK"
             
-        y_firma = 100
-        c.setStrokeColor(colors.black)
-        c.line(w/2 - 100, y_firma, w/2 + 100, y_firma)
-        c.setFont("Helvetica", 10)
-        c.drawCentredString(w/2, y_firma - 15, f"Firma: {operador}")
+        top_y = pdf.get_y()
+        if top_y > 260:
+            pdf.add_page()
+            
+        pdf.cell(130, 6, str(nombre_punto), border=1)
         
-        if os.path.exists(firma_path):
-            try: c.drawImage(ImageReader(firma_path), w/2 - 60, y_firma + 5, width=120, height=60, mask='auto')
-            except: pass
-
-        # --- PÁGINA 2: EVIDENCIA FOTOGRÁFICA ---
-        if foto_evidencia_path and os.path.exists(foto_evidencia_path):
-            c.showPage()
+        if "mal" in str(estado_punto).lower() or "no" in str(estado_punto).lower() or "falla" in str(estado_punto).lower():
+            pdf.set_text_color(200, 0, 0)
+        else:
+            pdf.set_text_color(0, 120, 0)
             
-            c.setFillColor(colors.darkblue)
-            c.rect(0, h - 80, w, 80, fill=1, stroke=0)
-            c.setFillColor(colors.white)
-            c.setFont("Helvetica-Bold", 16)
-            c.drawCentredString(w/2, h - 40, "ANEXO: EVIDENCIA FOTOGRÁFICA")
-            c.setFont("Helvetica", 12)
-            c.drawCentredString(w/2, h - 60, f"MÁQUINA: {maquina}")
+        pdf.cell(60, 6, str(estado_punto)[:35], border=1, align="C", ln=True)
+        pdf.set_text_color(51, 51, 51)
+        
+    pdf.ln(6)
+    
+    if obs and str(obs).strip() != "nan":
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(0, 6, "Diagnóstico Técnico / Observaciones:", ln=True)
+        pdf.set_font("Arial", "I", 9)
+        pdf.multi_cell(0, 5, str(obs), border=1)
+        pdf.ln(6)
+        
+    pdf.ln(5)
+    current_y = pdf.get_y()
+    
+    if firma_path and os.path.exists(str(firma_path)):
+        pdf.set_font("Arial", "B", 9)
+        pdf.text(15, current_y, "Firma del Técnico/Operador:")
+        try:
+            pdf.image(str(firma_path), x=15, y=current_y + 2, w=45)
+        except:
+            pdf.text(15, current_y + 10, "(Error al cargar la firma)")
             
-            try:
-                pil_img = Image.open(foto_evidencia_path)
-                pil_img = ImageOps.exif_transpose(pil_img) 
-                
-                img_buffer = io.BytesIO()
-                pil_img.save(img_buffer, format="PNG") 
-                img_buffer.seek(0)
-                
-                w_img, h_img = pil_img.size
-                
-                target_w_max = w - 100 
-                target_h_max = h - 200 
-                
-                if h_img > w_img:
-                    target_h = h - 220 
-                    target_w = w - 200 
-                    c.drawImage(ImageReader(img_buffer), 100, 50, width=target_w, height=target_h, preserveAspectRatio=True, mask='auto')
-                else: 
-                    target_w = w - 100
-                    target_h = 400
-                    c.drawImage(ImageReader(img_buffer), 50, h - 550, width=target_w, height=target_h, preserveAspectRatio=True, mask='auto')
-                
-            except Exception as e:
-                c.setFillColor(colors.black)
-                c.drawString(50, h - 150, f"Error al cargar la fotografía de evidencia: {e}")
-                
-        c.save(); return ruta_pdf
-    except Exception as e: print(e); return None
-
-def calcular_estado_mes(fecha_prog, estado_db):
-    if estado_db == 'Realizado': return "✅ OK"
-    hoy = datetime.now().date()
-    try: prog = pd.to_datetime(fecha_prog).date()
-    except: return "⚪ Error"
-    if hoy > prog and (hoy.month > prog.month or hoy.year > prog.year): return "🔴 Vencido"
-    if hoy.month == prog.month and hoy.year == prog.year:
-        ultimo_dia = (prog.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-        try: dias_habiles = np.busday_count(hoy, ultimo_dia)
-        except: dias_habiles = 30
-        return "🟠 ALERTA" if dias_habiles <= 10 else "🔵 En Plazo"
-    return "📅 Prog."
+    if foto_evidencia_path and os.path.exists(str(foto_evidencia_path)):
+        if pdf.get_y() > 180:
+            pdf.add_page()
+            current_y = 40
+        pdf.set_font("Arial", "B", 9)
+        pdf.text(110, current_y, "Evidencia Fotográfica Adjunta:")
+        try:
+            # Corrección de metadatos EXIF para fotos tomadas con celular
+            pil_img = Image.open(str(foto_evidencia_path))
+            pil_img = ImageOps.exif_transpose(pil_img)
+            temp_img_path = os.path.join(tempfile.gettempdir(), f"temp_ev_{nombre_seguro}.png")
+            pil_img.save(temp_img_path, format="PNG")
+            pdf.image(temp_img_path, x=110, y=current_y + 2, w=75)
+        except:
+            pdf.text(110, current_y + 10, "(Error cargando fotografía)")
+            
+    pdf.output(ruta_pdf)
+    return ruta_pdf
 
 # --- CONTROL DE ACCESO ---
 try: param_maquina = st.query_params.get("maquina", None)
@@ -540,7 +513,6 @@ if modo_kiosco:
             st.markdown("### 🛠️ Pauta de Mantención Técnica")
             st.caption(f"Lista de verificación obligatoria para: **{param_maquina}**")
             
-           # --- Lógica de asignación de pauta técnica ---
             nombre_maq = str(param_maquina).upper()
             lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["General"]
             
@@ -552,11 +524,8 @@ if modo_kiosco:
                 lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["Plegadora"]
             elif "COILINE" in nombre_maq:
                 lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["Coiline"]
-            
-            # --- CORRECCIÓN DEFINITIVA: PESTANERA (con N) y PESTAÑERA (con Ñ) ---
             elif any(x in nombre_maq for x in ["PESTAÑERA", "PESTANERA", "TDF", "EMBALLETADORA"]):
                 lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["Rodonadora Electrica"]
-                
             elif "RODONADORA" in nombre_maq:
                 if "ELEC" in nombre_maq or "ELÉC" in nombre_maq:
                     lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["Rodonadora Electrica"]
