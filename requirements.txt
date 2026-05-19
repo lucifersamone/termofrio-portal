@@ -1,6 +1,12 @@
 streamlit
 pandas
+numpy
 altair
+requests
 resend
 openpyxl
 fpdf2
+matplotlib
+streamlit-drawable-canvas
+Pillow
+qrcode
