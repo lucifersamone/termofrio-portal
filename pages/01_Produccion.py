@@ -159,7 +159,7 @@ MAPEO_CAMPOS = {
     "Pieza especial": ["A", "B", "d", "Simetria", "C", "D", "H", "Dia1", "Dia2", "Angulo", "Casquetes", "Entrada", "Salida"]
 }
 
-# --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.1 CON TRADUCTOR DE TABLAS) ---
+# --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.1 COMPLETA) ---
 class SQLiteToPostgresCursor:
     def __init__(self, pg_cursor):
         self.pg_cursor = pg_cursor
@@ -182,6 +182,28 @@ class SQLiteToPostgresCursor:
         
     def __getattr__(self, name):
         return getattr(self.pg_cursor, name)
+
+class SupabaseSQLAdapter:
+    def __init__(self):
+        self.conn = psycopg2.connect(
+            host=st.secrets["DB_HOST"],
+            database=st.secrets["DB_NAME"],
+            user=st.secrets["DB_USER"],
+            port=st.secrets["DB_PORT"],
+            password=st.secrets["DB_PASS"]
+        )
+    def cursor(self):
+        return SQLiteToPostgresCursor(self.conn.cursor())
+    def commit(self):
+        self.conn.commit()
+    def close(self):
+        self.conn.close()
+    def __getattr__(self, name):
+        return getattr(self.conn, name)
+
+# --- LA FUNCIÓN MAESTRA ---
+def get_connection(): 
+    return SupabaseSQLAdapter()
 
 # --- MAGIA: EL MOTOR BLINDADO QUE TOMA EL CORRELATIVO CORRECTO ---
 def obtener_siguiente_correlativo_obra(obra_codigo, tf):
