@@ -50,12 +50,21 @@ class SupabaseSQLAdapter:
             port=st.secrets["DB_PORT"],
             password=st.secrets["DB_PASS"]
         )
+
+        # Guarda de inmediato y evita que el Pooler corte la conexión
+        self.conn.autocommit = True
+        
     def cursor(self):
         return SQLiteToPostgresCursor(self.conn.cursor())
+
     def commit(self):
-        self.conn.commit()
+        # 💡 CAMBIO AQUÍ: Dejamos esto vacío con 'pass'.
+        # Como el autocommit ya está haciendo el trabajo solo, evitamos que Postgres lance un error.
+        pass
+
     def close(self):
         self.conn.close()
+
     def __getattr__(self, name):
         return getattr(self.conn, name)
 
