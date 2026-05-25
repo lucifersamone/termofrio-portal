@@ -13,6 +13,50 @@ import altair as alt
 import io
 import matplotlib.patches as patches
 import psycopg2
+import re
+
+# --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.0 ENFIERRADA) ---
+class SQLiteToPostgresCursor:
+    def __init__(self, pg_cursor):
+        self.pg_cursor = pg_cursor
+        
+    def execute(self, query, vars=None):
+        # 1. Traducir variables: '?' de SQLite a '%s' de Postgres
+        if vars is not None:
+            query = query.replace('?', '%s')
+            
+        # 2. Reparar comillas en alias: Cambia AS 'N° Pedido' por AS "N° Pedido"
+        query = re.sub(r"(?i)\bas\s+'([^']+)'", r'AS "\1"', query)
+        
+        # 3. Reparar corchetes: Cambia [tabla] o [columna] por comillas dobles
+        query = query.replace('[', '"').replace(']', '"')
+        
+        return self.pg_cursor.execute(query, vars)
+        
+    def __getattr__(self, name):
+        return getattr(self.pg_cursor, name)
+
+class SupabaseSQLAdapter:
+    def __init__(self):
+        self.conn = psycopg2.connect(
+            host=st.secrets["DB_HOST"],
+            database=st.secrets["DB_NAME"],
+            user=st.secrets["DB_USER"],
+            port=st.secrets["DB_PORT"],
+            password=st.secrets["DB_PASS"]
+        )
+    def cursor(self):
+        return SQLiteToPostgresCursor(self.conn.cursor())
+    def commit(self):
+        self.conn.commit()
+    def close(self):
+        self.conn.close()
+    def __getattr__(self, name):
+        return getattr(self.conn, name)
+
+# --- LA FUNCIÓN QUE RECONOCERÁ TU CÓDIGO ---
+def get_connection(): 
+    return SupabaseSQLAdapter()
 
 def limpiar_texto(text):
     """Limpia caracteres especiales que causan errores en PDFs."""
@@ -115,38 +159,29 @@ MAPEO_CAMPOS = {
     "Pieza especial": ["A", "B", "d", "Simetria", "C", "D", "H", "Dia1", "Dia2", "Angulo", "Casquetes", "Entrada", "Salida"]
 }
 
-# --- ADAPTADOR INVISIBLE PARA SUPABASE ---
+# --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.1 CON TRADUCTOR DE TABLAS) ---
 class SQLiteToPostgresCursor:
     def __init__(self, pg_cursor):
         self.pg_cursor = pg_cursor
+        
     def execute(self, query, vars=None):
+        # 1. Traducir variables: '?' de SQLite a '%s' de Postgres
         if vars is not None:
             query = query.replace('?', '%s')
+            
+        # 2. Reparar comillas en alias: Cambia AS 'N° Pedido' por AS "N° Pedido"
+        query = re.sub(r"(?i)\bas\s+'([^']+)'", r'AS "\1"', query)
+        
+        # 3. Reparar corchetes: Cambia [tabla] o [columna] por comillas dobles
+        query = query.replace('[', '"').replace(']', '"')
+        
+        # 4. Mapeo de tablas: Cambia automáticamente "pedidos" por "pedidostf"
+        query = re.sub(r'(?i)\bpedidos\b', 'pedidostf', query)
+        
         return self.pg_cursor.execute(query, vars)
+        
     def __getattr__(self, name):
         return getattr(self.pg_cursor, name)
-
-class SupabaseSQLAdapter:
-    def __init__(self):
-        self.conn = psycopg2.connect(
-            host=st.secrets["DB_HOST"],
-            database=st.secrets["DB_NAME"],
-            user=st.secrets["DB_USER"],
-            port=st.secrets["DB_PORT"],
-            password=st.secrets["DB_PASS"]
-        )
-    def cursor(self):
-        return SQLiteToPostgresCursor(self.conn.cursor())
-    def commit(self):
-        self.conn.commit()
-    def close(self):
-        self.conn.close()
-    def __getattr__(self, name):
-        return getattr(self.conn, name)
-
-# --- TU FUNCIÓN AHORA APUNTANDO A LA NUBE ---
-def get_connection(): 
-    return SupabaseSQLAdapter()
 
 # --- MAGIA: EL MOTOR BLINDADO QUE TOMA EL CORRELATIVO CORRECTO ---
 def obtener_siguiente_correlativo_obra(obra_codigo, tf):
