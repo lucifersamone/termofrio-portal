@@ -17,7 +17,7 @@ from fpdf import FPDF
 import psycopg2
 import re
 
-# --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.1 COMPLETA) ---
+# --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.2 CON TRADUCTOR DE TIPOS NUMÉRICOS) ---
 class SQLiteToPostgresCursor:
     def __init__(self, pg_cursor):
         self.pg_cursor = pg_cursor
@@ -26,6 +26,16 @@ class SQLiteToPostgresCursor:
         # 1. Traducir variables: '?' de SQLite a '%s' de Postgres
         if vars is not None:
             query = query.replace('?', '%s')
+            
+            # 🔥 PIEZA CLAVE: Convierte formatos numéricos de ingeniería (NumPy/Pandas) 
+            # a números nativos de Python para evitar el error 'InvalidSchemaName'
+            cleaned_vars = []
+            for v in vars:
+                if hasattr(v, 'item') and callable(getattr(v, 'item')):
+                    cleaned_vars.append(v.item()) # .item() extrae el número puro sin el "np.float64"
+                else:
+                    cleaned_vars.append(v)
+            vars = tuple(cleaned_vars)
             
         # 2. Reparar comillas en alias: Cambia AS 'N° Pedido' por AS "N° Pedido"
         query = re.sub(r"(?i)\bas\s+'([^']+)'", r'AS "\1"', query)
@@ -50,7 +60,6 @@ class SupabaseSQLAdapter:
             port=st.secrets["DB_PORT"],
             password=st.secrets["DB_PASS"]
         )
-
         # Guarda de inmediato y evita que el Pooler corte la conexión
         self.conn.autocommit = True
         
@@ -58,8 +67,7 @@ class SupabaseSQLAdapter:
         return SQLiteToPostgresCursor(self.conn.cursor())
 
     def commit(self):
-        # 💡 CAMBIO AQUÍ: Dejamos esto vacío con 'pass'.
-        # Como el autocommit ya está haciendo el trabajo solo, evitamos que Postgres lance un error.
+        # Desactivado porque autocommit=True ya hace el trabajo solo
         pass
 
     def close(self):
