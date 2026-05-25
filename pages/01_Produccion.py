@@ -1339,10 +1339,9 @@ with tab4:
                     df_p.loc[~mask_un, 'peso_total'] *= factor
                     df_p.loc[~mask_un, 'total_linea'] *= factor
                     df_ajustado = pd.concat([df_ajustado, df_p])
-        
-res = []
+        res = []
 
-        # 🔥 TRADUCTOR INTELIGENTE
+        # 🔥 TRADUCTOR INTELIGENTE (Dentro del bloque a 8 espacios)
         mapeo_columnas = {}
         for col in df_ajustado.columns:
             col_limpia = str(col).strip().lower()
@@ -1371,7 +1370,6 @@ res = []
         totales = pd.DataFrame([{"CECO": "TOTALES", "OBRA": "---", "KG_GALV": df_edp_final["KG_GALV"].sum(), "$ GALV": df_edp_final["$ GALV"].sum(), "KG_FE": df_edp_final["KG_FE"].sum(), "$ FE": df_edp_final["$ FE"].sum(), "KG_ESP": df_edp_final["KG_ESP"].sum(), "$ ESP": df_edp_final["$ ESP"].sum()}])
         df_edp_final = pd.concat([df_edp_final, totales], ignore_index=True)
                     
-        st.divider()
         st.write("### Tabla de Datos (Selecciona y copia directamente)")
         st.dataframe(df_edp_final, use_container_width=True, hide_index=True)
         st.download_button("📥 Descargar CSV para Excel", df_edp_final.to_csv(index=False).encode('utf-8-sig'), "EDP_Periodo.csv", "text/csv")
@@ -1408,8 +1406,7 @@ res = []
             st.caption("No hay M2 seleccionados. Marque la casilla correspondiente para calcular el monto.")
 
     else:
-        st.warning("No se encontraron pedidos con los filtros seleccionados.")
-                        
+        st.warning("No se encontraron pedidos con los filtros seleccionados.")                        
 with tab5:
     st.header("📈 Dashboard de Producción")
     conn = get_connection(); df_all_ped = pd.read_sql("SELECT * FROM pedidos", conn); df_all_items = pd.read_sql("SELECT * FROM items_pedido", conn); conn.close()
