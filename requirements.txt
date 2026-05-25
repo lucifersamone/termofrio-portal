@@ -1,12 +1,11 @@
 streamlit
 pandas
+requests
+fpdf
 numpy
 altair
-requests
-resend
-openpyxl
-fpdf2
 matplotlib
-streamlit-drawable-canvas
-Pillow
 qrcode
+pillow
+reportlab
+psycopg2-binary

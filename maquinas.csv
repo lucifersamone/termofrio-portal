@@ -1,0 +1,25 @@
+id,nombre,caracteristicas,frecuencia_mantencion,foto_path,modelo
+CILINDRADORA_1,CILINDRADORA 1,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\CILINDRADORA_1.jpeg,
+CILINDRADORA_2,CILINDRADORA 2,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\CILINDRADORA_2.jpeg,
+CNC_1_PLASMA,CNC 1 PLASMA,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\CNC_1_PLASMA.jpeg,
+CNC_2_PLASMA,CNC 2 PLASMA,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\CNC_2_PLASMA.jpeg,
+COILINE,COILINE,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\COILINE.jpeg,
+EMBALLETADORA,EMBALLETADORA,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\EMBALLETADORA.jpeg,
+GUILLOTINA_1,GUILLOTINA 1,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\GUILLOTINA_1.jpeg,
+GUILLOTINA_2,GUILLOTINA 2,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\GUILLOTINA_2.jpeg,
+PESTANERA_1_PIPO,PESTANERA 1 PIPO,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\PESTANERA_1_PIPO.jpeg,
+PESTANERA_4_BALLETA,PESTANERA 4 BALLETA,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\PESTANERA_4_BALLETA.jpeg,
+PLEGADORA_1,PLEGADORA 1,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\PLEGADORA_1.jpeg,
+PLEGADORA_2,PLEGADORA 2,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\PLEGADORA_2.jpeg,
+PLEGADORA_3,PLEGADORA 3,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\PLEGADORA_3.jpeg,
+PLEGADORA_4,PLEGADORA 4,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\PLEGADORA_4.jpeg,
+RODONADORA_1,RODONADORA 1,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\RODONADORA_1.jpeg,
+RODONADORA_2,RODONADORA 2,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\RODONADORA_2.jpeg,
+RODONADORA_3_ELECTRICA,RODONADORA 3 ELECTRICA,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\RODONADORA_3_ELECTRICA.jpeg,
+TDF_1,TDF 1,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\TDF_1.jpeg,
+TDF_2,TDF 2,Cargada Automáticamente,Cuatrimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\TDF_2.jpeg,
+PESTANERA_2_TRIPLE,PESTANERA 2 TRIPLE,Auto-detectada,Trimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\PESTANERA_2_TRIPLE.jpeg,N/A
+PESTANERA_3_BALLETA,PESTANERA 3 BALLETA,Auto-detectada,Trimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\PESTANERA_3_BALLETA.jpeg,N/A
+PESTANERA_5_PIPO,PESTANERA 5 PIPO,Auto-detectada,Trimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\PESTANERA_5_PIPO.jpeg,N/A
+PESTANERA_6_RODONADORA,PESTANERA 6 RODONADORA,Auto-detectada,Trimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\PESTANERA_6_RODONADORA.jpeg,N/A
+PLEGADORA_5,PLEGADORA 5,Sincronizada,Trimestral,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\img_maquinas\PLEGADORA_5.jpeg,N/A

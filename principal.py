@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import requests
-import json
 import os
 from datetime import datetime, date, timedelta
 from pandas.tseries.offsets import BusinessDay
@@ -11,13 +10,40 @@ import altair as alt
 import base64
 import io
 import tempfile
-from fpdf import FPDF
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 import random
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from fpdf import FPDF
+import psycopg2
+
+# --- ADAPTADOR INVISIBLE PARA SUPABASE ---
+class SQLiteToPostgresCursor:
+    def __init__(self, pg_cursor):
+        self.pg_cursor = pg_cursor
+    def execute(self, query, vars=None):
+        if vars is not None:
+            query = query.replace('?', '%s')
+        return self.pg_cursor.execute(query, vars)
+    def __getattr__(self, name):
+        return getattr(self.pg_cursor, name)
+
+class SupabaseSQLAdapter:
+    def __init__(self):
+        self.conn = psycopg2.connect(
+            host=st.secrets["DB_HOST"],
+            database=st.secrets["DB_NAME"],
+            user=st.secrets["DB_USER"],
+            port=st.secrets["DB_PORT"],
+            password=st.secrets["DB_PASS"]
+        )
+    def cursor(self):
+        return SQLiteToPostgresCursor(self.conn.cursor())
+    def commit(self):
+        self.conn.commit()
+    def close(self):
+        self.conn.close()
+    def __getattr__(self, name):
+        return getattr(self.conn, name)
 
 # Configuración extendida de página
 st.set_page_config(page_title="Dashboard Fabricacion Ductos", page_icon="termofrio.ico", layout="wide")
@@ -29,22 +55,29 @@ DB_MANT = os.path.join(BASE_DIR, 'mantenimiento_taller.db')
 CARPETA_FOTOS = os.path.join(BASE_DIR, "img_maquinas")
 
 # Rutas para el PDF
-DIR_RECURSOS = os.path.join(BASE_DIR, 'firma_timbre') 
+DIR_RECURSOS = os.path.join(BASE_DIR, 'firma_timbre')
 LOGO_PATH = os.path.join(DIR_RECURSOS, 'termofriologo.jpg')
 ISO_PATH = os.path.join(DIR_RECURSOS, 'tfiso.jpg')
 
 # ====================================================================
+# FUNCIONES DE UTILIDAD PARA PDF NATIVO
+# ====================================================================
+def limpiar_texto(text):
+    """Limpia caracteres especiales que causan errores en PDFs."""
+    if not isinstance(text, str): text = str(text)
+    mapping = {"–": "-", "—": "-", "…": "...", "“": '"', "”": '"', "‘": "'", "’": "'"}
+    for char, replacement in mapping.items(): text = text.replace(char, replacement)
+    return text.encode("latin-1", "replace").decode("latin-1")
+
+# ====================================================================
 # FUNCIONES DE BASE DE DATOS
 # ====================================================================
-def get_connection(): 
-    return sqlite3.connect(DB_PROD, check_same_thread=False)
+def get_connection():
+    return SupabaseSQLAdapter() 
 
 def obtener_siguiente_correlativo_obra(obra_codigo, tf):
-    """Busca el número de pedido más alto para una obra específica y devuelve el siguiente con prefijo OT."""
     conn = get_connection()
     c = conn.cursor()
-    
-    # --- BLINDAJE ANTI-FANTASMAS ---
     obra_segura = obra_codigo if (obra_codigo and str(obra_codigo).strip() != "" and obra_codigo != "Seleccione Obra...") else "NULO_OBRA_XYZ"
     tf_seguro = tf if (tf and str(tf).strip() != "") else "NULO_TF_XYZ"
     
@@ -73,8 +106,7 @@ def obtener_siguiente_correlativo_obra(obra_codigo, tf):
 
 @st.cache_resource
 def actualizar_bd_estructuras():
-    conn = get_connection()
-    c = conn.cursor()
+    conn = get_connection(); c = conn.cursor()
     try: c.execute("ALTER TABLE pedidos ADD COLUMN observaciones TEXT DEFAULT ''") 
     except: pass
     try: c.execute("ALTER TABLE pedidos ADD COLUMN estado_despacho TEXT DEFAULT 'En Taller'") 
@@ -91,8 +123,7 @@ def actualizar_bd_estructuras():
     except: pass
     try: c.execute("ALTER TABLE usuarios_claves ADD COLUMN ultimo_2fa DATE")
     except: pass
-    conn.commit()
-    conn.close()
+    conn.commit(); conn.close()
     return True
 
 actualizar_bd_estructuras()
@@ -101,7 +132,6 @@ actualizar_bd_estructuras()
 USUARIOS = {
     "admin": {"clave": "termofrio", "rol": "administrador", "nombre": "Admin Taller"},
     
-    # --- GRUPO 1: OBRA 13655 ---
     "navile": {
         "clave": "1234", "rol": "cliente", "nombre": "Natanael Avile",
         "correo": "navile@termofrio.cl", 
@@ -113,7 +143,6 @@ USUARIOS = {
         "tf": ["13655"], "ceco": ["2-11-063"], "obra": ["TF-13655 SANTIAGO WEST TEMPLE"]
     },
     
-    # --- GRUPO 2: OBRAS 13784 y 13817 ---
     "ainostroza": {
         "clave": "1234", "rol": "cliente", "nombre": "Alejandro Inostroza",
         "correo": "ainostroza@termofrio.cl", 
@@ -136,7 +165,6 @@ USUARIOS = {
         "obra": ["TF – 13784 ACHS EDIFICIO B PROVIDENCIA", "TF-13817 ACHS - EDIFICIO K1 PISO 1 - EDIFICIO C"]
     },
     
-    # --- USUARIOS SIN OBRA FIJA ---
     "cbustos": {"clave": "1234", "rol": "cliente", "nombre": "Cristian Bustos", "correo": "cristian.bustos@ejemplo.cl"},
     "jguzman": {"clave": "1234", "rol": "cliente", "nombre": "Joel Guzman", "correo": "jguzman@termofrio.cl"},
     "pramirez": {"clave": "1234", "rol": "cliente", "nombre": "Paulo Ramirez", "correo": "pramirez@termofrio.cl"},
@@ -148,7 +176,6 @@ USUARIOS = {
     "amarin": {"clave": "1234", "rol": "cliente", "nombre": "Axel Marin", "correo": "amarin@termofrio.cl"},
 }
 
-# --- LISTAS DESPLEGABLES ESTANDARIZADAS ---
 LISTA_DESCRIPCIONES = [
     "Ducto Recto", "Codo", "Codo Transfor.", "Medio Codo", "Transformación", 
     "S", "S Transformada", "Zapato c/ Templador", "Zapato s/ Templador", 
@@ -162,21 +189,8 @@ LISTA_DESCRIPCIONES = [
     "Plancha Lisa", "Pieza especial"
 ]
 
-LISTA_SIMETRIAS = [
-    "Asimétrica", "Inferior Parejo", "Pareja Der. - Inf. Pareja",
-    "Pareja Der. - Simétrica", "Pareja Der. - Sup. Pareja",
-    "Pareja Izq. - Inf. Pareja", "Pareja Izq. - Simétrica",
-    "Pareja Izq. - Sup. Pareja", "Simétrica - Inf. Pareja",
-    "Simétrica - Simétrica", "Simétrica - Sup. Pareja",
-    "Simétrico", "Superior Parejo", "Cuadrado"
-]
-
-LISTA_UNIONES = [
-    "Balleta", "Copla Rodón", "Embutido", "Escu. - Recar. 25", "Escuadra",
-    "Flange", "Liso", "Malla", "Pestaña 15", "Pestaña 25", "Pestaña 30",
-    "Pestaña 40", "Pestaña 50", "TDF", "Triple 50", "Triple 60",
-    "Tapa ciega", "Tapa c/collarin"
-]
+LISTA_SIMETRIAS = ["Asimétrica", "Inferior Parejo", "Pareja Der. - Inf. Pareja", "Pareja Der. - Simétrica", "Pareja Der. - Sup. Pareja", "Pareja Izq. - Inf. Pareja", "Pareja Izq. - Simétrica", "Pareja Izq. - Sup. Pareja", "Simétrica - Inf. Pareja", "Simétrica - Simétrica", "Simétrica - Sup. Pareja", "Simétrico", "Superior Parejo", "Cuadrado"]
+LISTA_UNIONES = ["Balleta", "Copla Rodón", "Embutido", "Escu. - Recar. 25", "Escuadra", "Flange", "Liso", "Malla", "Pestaña 15", "Pestaña 25", "Pestaña 30", "Pestaña 40", "Pestaña 50", "TDF", "Triple 50", "Triple 60", "Tapa ciega", "Tapa c/collarin"]
 
 MAPEO_CAMPOS = {
     "Ducto Recto": ["A", "B", "H", "Entrada", "Salida"],
@@ -429,10 +443,7 @@ def calcular_peso_teorico(desc, l_a, l_b, l_c, l_d, l_h, diam, diam2, esp):
         b = float(str(l_b).replace(',','.')) / 100 if l_b else 0.0
         c = float(str(l_c).replace(',','.')) / 100 if l_c else 0.0
         d = float(str(l_d).replace(',','.')) / 100 if l_d else 0.0
-        
-        # --- AQUÍ ESTÁ EL CAMBIO PARA LOS CENTÍMETROS ---
         h = float(str(l_h).replace(',','.')) / 100 if l_h else 0.0
-        
         d1 = float(str(diam).replace(',','.')) / 100 if diam else 0.0
         d2 = float(str(diam2).replace(',','.')) / 100 if diam2 else 0.0
         espesor = float(esp)
@@ -463,118 +474,104 @@ def calcular_peso_teorico(desc, l_a, l_b, l_c, l_d, l_h, diam, diam2, esp):
         return peso_base * 1.15 
     except: return 0.0
 
-
 def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_est, observaciones="", men=""):
+    """Generador de PDF para Clientes - 100% Nativo en Python, compatible con la Nube."""
     clean_id = str(pedido_num).replace("/", "-").replace("\\", "-").strip()
     temp_dir = tempfile.gettempdir()
     ruta_pdf = os.path.join(temp_dir, f"Comprobante_{clean_id}.pdf")
-    
-    class PDF(FPDF):
-        def header(self):
-            # Colores corporativos: Azul Oscuro
-            self.set_fill_color(27, 54, 93)
-            self.rect(0, 0, 210, 35, 'F')
+
+    try:
+        pdf = FPDF(orientation='L', unit='mm', format='A4')
+        pdf.add_page()
+        
+        if os.path.exists(LOGO_PATH):
+            try: pdf.image(LOGO_PATH, x=10, y=8, w=40)
+            except: pass
+        
+        pdf.set_font("Arial", "B", 14)
+        pdf.set_text_color(85, 85, 85)
+        pdf.cell(0, 15, "COMPROBANTE DE SOLICITUD DE FABRICACION - TERMOFRIO SPA", ln=True, align="C")
+        pdf.ln(5)
+
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_fill_color(245, 245, 245)
+        
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(30, 6, "N de Pedido:", border=0, fill=True)
+        pdf.set_font("Arial", "", 10)
+        pdf.cell(60, 6, limpiar_texto(str(pedido_num)), border=0, fill=True)
+        
+        pdf.set_font("Arial", "B", 10)
+        try: kg_est_formateado = f"{float(kg_est):.1f}"
+        except: kg_est_formateado = str(kg_est)
+        pdf.cell(0, 6, limpiar_texto(f"KG ESTIMADOS TOTALES: {kg_est_formateado} Kg"), border=0, fill=True, ln=True, align="R")
+
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(30, 6, "Obra Destino:", border=0, fill=True)
+        pdf.set_font("Arial", "", 10)
+        pdf.cell(60, 6, limpiar_texto(str(obra)), border=0, fill=True)
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(0, 6, f"Fecha Emision: {datetime.now().strftime('%d/%m/%Y')}", border=0, fill=True, ln=True, align="R")
+
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(30, 6, "Codigo TF/CC:", border=0, fill=True)
+        pdf.set_font("Arial", "", 10)
+        pdf.cell(60, 6, limpiar_texto(str(tf)), border=0, fill=True)
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(60, 6, limpiar_texto(f"CECO: {ceco}"), border=0, fill=True)
+        if men and str(men).strip() and str(men) != "nan":
+            pdf.cell(0, 6, limpiar_texto(f"MEN: {men}"), border=0, fill=True, ln=True, align="R")
+        else:
+            pdf.cell(0, 6, "", border=0, fill=True, ln=True)
+
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(30, 6, "Solicitante:", border=0, fill=True)
+        pdf.set_font("Arial", "", 10)
+        pdf.cell(0, 6, limpiar_texto(str(solicitante)), border=0, fill=True, ln=True)
+
+        pdf.ln(5)
+
+        pdf.set_font("Arial", "B", 9)
+        pdf.set_fill_color(105, 105, 105)
+        pdf.set_text_color(255, 255, 255)
+        pdf.cell(15, 8, "Item", border=1, align="C", fill=True)
+        pdf.cell(65, 8, "Descripcion", border=1, fill=True)
+        pdf.cell(140, 8, "Medidas y Especificaciones", border=1, fill=True)
+        pdf.cell(15, 8, "Cant.", border=1, align="C", fill=True)
+        pdf.cell(20, 8, "Espesor", border=1, align="C", fill=True)
+        pdf.cell(20, 8, "Kg Est.", border=1, align="C", fill=True, ln=True)
+
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_font("Arial", "", 9)
+        for _, row in items_df.iterrows():
+            try: kg_str = f"{float(row.get('peso_total', 0)):.2f}"
+            except: kg_str = str(row.get('peso_total', ''))
             
-            self.set_font("Arial", "B", 16)
-            self.set_text_color(255, 255, 255)
-            self.cell(0, 12, "TERMOFRIO LTDA.", ln=True, align="L")
-            self.set_font("Arial", "", 11)
-            self.cell(0, 4, "Portal de Pedidos - Comprobante de Recepción", ln=True, align="L")
-            self.ln(12)
+            try: esp_str = f"{float(row.get('espesor', 0)):.1f}"
+            except: esp_str = str(row.get('espesor', ''))
 
-        def footer(self):
-            self.set_y(-15)
-            self.set_font("Arial", "I", 8)
-            self.set_text_color(128, 128, 128)
-            self.cell(0, 10, f"Página {self.page_no()}/{{nb}} - Documento generado automáticamente", align="C")
+            itm = str(row.get('item_numero', row.get('item_num', '')))
+            dsc = str(row.get('descripcion', row.get('Descripción', '')))
+            det = str(row.get('detalles', row.get('Detalles/Medidas', ''))).replace('nan', '')
+            cnt = str(row.get('cantidad', row.get('Cantidad', '')))
 
-    # Inicializar PDF en formato A4
-    pdf = PDF(orientation="P", unit="mm", format="A4")
-    pdf.alias_nb_pages()
-    pdf.add_page()
-    pdf.set_text_color(51, 51, 51) # Gris oscuro para texto
-    
-    # --- BLOQUE DE INFORMACIÓN GENERAL ---
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, f"DETALLES DEL PEDIDO: {pedido_num}", ln=True)
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(4)
-    
-    pdf.set_font("Arial", "", 10)
-    # Tabla informativa de dos columnas
-    datos = [
-        ("Código TF / CC:", str(tf), "Obra Destino:", str(obra)),
-        ("CECO:", str(ceco), "Solicitante:", str(solicitante)),
-        ("M.E.N:", str(men), "Peso Est. Total:", f"{kg_est:.2f} Kg" if isinstance(kg_est, (int, float)) else str(kg_est))
-    ]
-    
-    for row in datos:
-        pdf.set_font("Arial", "B", 10)
-        pdf.cell(35, 6, row[0])
-        pdf.set_font("Arial", "", 10)
-        pdf.cell(60, 6, row[1])
-        pdf.set_font("Arial", "B", 10)
-        pdf.cell(30, 6, row[2])
-        pdf.set_font("Arial", "", 10)
-        pdf.cell(65, 6, row[3], ln=True)
-    
-    pdf.ln(6)
-    
-    # --- TABLA DE ITEMS ---
-    pdf.set_font("Arial", "B", 11)
-    pdf.cell(0, 8, "DETALLE DE PIEZAS SOLICITADAS", ln=True)
-    pdf.ln(2)
-    
-    # Encabezados de tabla
-    pdf.set_fill_color(232, 238, 245) # Azul muy claro
-    pdf.set_font("Arial", "B", 9)
-    pdf.cell(15, 7, "Item", border=1, fill=True, align="C")
-    pdf.cell(35, 7, "Pieza", border=1, fill=True)
-    pdf.cell(105, 7, "Especificaciones / Medidas", border=1, fill=True)
-    pdf.cell(15, 7, "Cant.", border=1, fill=True, align="C")
-    pdf.cell(20, 7, "Peso (Kg)", border=1, fill=True, align="C", ln=True)
-    
-    # Filas de la tabla (Extracción desde el DataFrame de ítems)
-    pdf.set_font("Arial", "", 9)
-    for _, fila in items_df.iterrows():
-        # Validar nombres de columnas según cómo los maneje tu dataframe
-        item_id = str(fila.get('Item', fila.get('item_num', '')))
-        pieza = str(fila.get('Pieza', fila.get('Descripción', '')))
-        especs = str(fila.get('Especificaciones', fila.get('Detalles/Medidas', '')))
-        cant = str(fila.get('Cant.', fila.get('Cantidad', '')))
-        peso = str(fila.get('Peso (Kg)', fila.get('Kg', '')))
-        
-        # Guardamos la posición vertical por si las especificaciones tienen salto de línea
-        top_y = pdf.get_y()
-        
-        # Dibujamos las celdas con control de altura múltiple para evitar desbordes
-        pdf.cell(15, 6, item_id, border=1, align="C")
-        pdf.cell(35, 6, pieza[:18], border=1) # Truncamos si es muy largo
-        
-        # El campo de especificaciones puede tener saltos de línea largos
-        pos_x = pdf.get_x()
-        pdf.multi_cell(105, 6, especs, border=1)
-        end_y = pdf.get_y()
-        
-        # Volvemos a la línea para terminar las celdas restantes de la fila
-        pdf.set_xy(pos_x + 105, top_y)
-        pdf.cell(15, end_y - top_y, cant, border=1, align="C")
-        pdf.cell(20, end_y - top_y, peso, border=1, align="C", ln=True)
-        pdf.set_y(end_y) # Posicionamos para la siguiente fila
-        
-    pdf.ln(6)
-    
-    # --- OBSERVACIONES ---
-    if observaciones:
-        pdf.set_font("Arial", "B", 10)
-        pdf.cell(0, 6, "Observaciones adicionales:", ln=True)
-        pdf.set_font("Arial", "I", 10)
-        pdf.multi_cell(0, 5, str(observaciones), border=1)
-        pdf.ln(4)
-        
-    # Guardar archivo binario puro
-    pdf.output(ruta_pdf)
-    return ruta_pdf
+            pdf.cell(15, 6, limpiar_texto(itm), border=1, align="C")
+            pdf.cell(65, 6, limpiar_texto(dsc)[:35], border=1) 
+            pdf.cell(140, 6, limpiar_texto(det)[:85], border=1)
+            pdf.cell(15, 6, limpiar_texto(cnt), border=1, align="C")
+            pdf.cell(20, 6, limpiar_texto(esp_str), border=1, align="C")
+            pdf.cell(20, 6, limpiar_texto(kg_str), border=1, align="C", ln=True)
+
+        if observaciones and str(observaciones).strip() and str(observaciones) != "nan":
+            pdf.ln(5)
+            pdf.set_font("Arial", "I", 9)
+            pdf.multi_cell(0, 6, limpiar_texto(f"Comentarios / Observaciones: {observaciones}"), border=1)
+
+        pdf.output(ruta_pdf)
+        return ruta_pdf
+    except Exception as e:
+        print(f"Error generando PDF Cliente nativo: {e}")
+        return None
 
 # ====================================================================
 # VISTA EXCLUSIVA PARA CLIENTES / SUPERVISORES
@@ -587,7 +584,6 @@ if st.session_state.rol == "cliente":
     st.title(f"👋 Bienvenido, {st.session_state.nombre_usuario}")
     st.markdown("Portal de Solicitudes y Seguimiento de Termofrio SPA.")
     
-    # --- PESTAÑA DE CARGA MASIVA EXTIRPADA PARA CLIENTES ---
     tab_mis_pedidos, tab_nuevo_pedido = st.tabs(["📦 Mis Pedidos", "✍️ Nuevo Pedido Manual"])
     
     with tab_mis_pedidos:
@@ -743,12 +739,9 @@ if st.session_state.rol == "cliente":
             req_fields = MAPEO_CAMPOS.get(desc_m, MAPEO_CAMPOS["Pieza especial"])
             
             with st.expander("📐 Dimensiones de Fabricación", expanded=True):
-                
-                # --- DISEÑO DE DOS COLUMNAS: INPUTS Y DIBUJO ---
                 col_inputs, col_img = st.columns([3, 2]) 
                 
                 with col_inputs:
-                    # Lados A, B, C, D y Desviación d
                     if any(k in req_fields for k in ["A", "B", "C", "D", "d"]):
                         cg1 = st.columns(5)
                         if "A" in req_fields: l_a = cg1[0].text_input("Lado A (cm) *", placeholder="Ej: 50", key="a_cli")
@@ -759,7 +752,6 @@ if st.session_state.rol == "cliente":
                         if "D" in req_fields: l_d = cg1[3].text_input(lbl_d, placeholder="Ej: 20", key="d_cli")
                         if "d" in req_fields: l_d_desv = cg1[4].text_input("Desv. d (cm) *", placeholder="Ej: 10", key="desv_cli")
                     
-                    # Largo H, Radio, Diámetros, Ángulos y Casquetes (AHORA EN 6 COLUMNAS)
                     if any(k in req_fields for k in ["H", "Dia1", "Dia2", "Angulo", "Radio", "Casquetes"]):
                         cg2 = st.columns(6)
                         if "H" in req_fields: l_h = cg2[0].text_input("Largo H (cm) *", placeholder="Ej: 150", key="h_cli")
@@ -770,28 +762,22 @@ if st.session_state.rol == "cliente":
                         if "Radio" in req_fields: radio = cg2[4].text_input("Radio (cm) *", placeholder="Ej: 15", key="rad_cli")
                         if "Casquetes" in req_fields: casq = cg2[5].text_input("N° Casq", placeholder="Ej: 3", key="ca_cli")
                     
-                    # Simetría y Uniones
                     if any(k in req_fields for k in ["Simetria", "Entrada", "Salida"]):
                         cg3 = st.columns(3)
                         if "Simetria" in req_fields: sim = cg3[0].selectbox("Simetría *", [""] + LISTA_SIMETRIAS, key="si_cli")
                         if "Entrada" in req_fields: u_ent = cg3[1].selectbox("Unión Entrada *", [""] + LISTA_UNIONES, key="ue_cli")
                         if "Salida" in req_fields: u_sal = cg3[2].selectbox("Unión Salida *", [""] + LISTA_UNIONES, key="us_cli")
 
-                # --- MOTOR DE DIBUJO 2D AVANZADO EN TIEMPO REAL ---
                 with col_img:
                     st.markdown("<div style='text-align: center; color: #7f8c8d; font-size: 14px;'><b>Planos de Fabricación</b></div>", unsafe_allow_html=True)
-                    
                     try:
-                        # 1. DUCTO RECTO (Muestra Boca y Largo H)
                         if desc_m == "Ducto Recto" and l_a and l_b and l_h:
                             a_val = float(str(l_a).replace(',', '.'))
                             b_val = float(str(l_b).replace(',', '.'))
                             h_val = float(str(l_h).replace(',', '.'))
-                            
                             if a_val > 0 and b_val > 0 and h_val > 0:
                                 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(6, 3))
                                 fig.patch.set_alpha(0.0)
-                                
                                 ax1.patch.set_alpha(0.0)
                                 rect1 = patches.Rectangle((-a_val/2, -b_val/2), a_val, b_val, linewidth=2, edgecolor='#2980b9', facecolor='#d4e6f1')
                                 ax1.add_patch(rect1)
@@ -815,12 +801,10 @@ if st.session_state.rol == "cliente":
                                 ax2.set_title("Planta (Largo H)", fontsize=11, color="#34495e", fontweight='bold')
                                 st.pyplot(fig)
                                 
-                        # 2. CODOS (Muestra Curva, Ángulo y el Nuevo Radio)
                         elif desc_m in ["Codo", "Medio Codo"] and l_a and ang and radio:
                             a_val = float(str(l_a).replace(',', '.'))
                             ang_val = float(str(ang).replace(',', '.'))
-                            r_in = float(str(radio).replace(',', '.')) # Ahora usa tu cajita de texto!
-                            
+                            r_in = float(str(radio).replace(',', '.')) 
                             if a_val > 0 and ang_val > 0 and r_in > 0:
                                 fig, ax = plt.subplots(figsize=(4, 4))
                                 fig.patch.set_alpha(0.0); ax.patch.set_alpha(0.0)
@@ -837,7 +821,6 @@ if st.session_state.rol == "cliente":
                                 ax.set_title("Planta de Curvatura", fontsize=11, color="#34495e", fontweight='bold')
                                 st.pyplot(fig)
 
-                        # 3. TRANSFORMACIÓN (¡La nueva magia de 4 lados!)
                         elif desc_m == "Transformación" and l_a and l_b and l_c and l_d and l_h:
                             a_val = float(str(l_a).replace(',', '.'))
                             b_val = float(str(l_b).replace(',', '.'))
@@ -849,7 +832,6 @@ if st.session_state.rol == "cliente":
                                 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(6, 3))
                                 fig.patch.set_alpha(0.0)
                                 
-                                # Vista Bocas Superpuestas (AxB vs CxD)
                                 ax1.patch.set_alpha(0.0)
                                 rect_ab = patches.Rectangle((-a_val/2, -b_val/2), a_val, b_val, linewidth=2, edgecolor='#2980b9', facecolor='#d4e6f1', alpha=0.5)
                                 rect_cd = patches.Rectangle((-c_val/2, -d_val/2), c_val, d_val, linewidth=2, edgecolor='#e67e22', facecolor='#fdebd0', alpha=0.6)
@@ -863,7 +845,6 @@ if st.session_state.rol == "cliente":
                                 ax1.text(0, d_val/2 + m1*0.05, f"Boca 2 (C x D)", ha='center', fontsize=9, color='#d35400', fontweight='bold')
                                 ax1.set_title("Cortes Superpuestos", fontsize=11, color="#34495e", fontweight='bold')
                                 
-                                # Vista Planta (Trapecio A -> C)
                                 ax2.patch.set_alpha(0.0)
                                 trap = patches.Polygon([(-a_val/2, 0), (a_val/2, 0), (c_val/2, h_val), (-c_val/2, h_val)], closed=True, linewidth=2, edgecolor='#27ae60', facecolor='#d5f5e3')
                                 ax2.add_patch(trap)
@@ -878,7 +859,6 @@ if st.session_state.rol == "cliente":
                                 
                                 st.pyplot(fig)
 
-                        # 4. OTROS DUCTOS RECTANGULARES GENÉRICOS (Solo Boca)
                         elif "A" in req_fields and "B" in req_fields and l_a and l_b:
                             a_val = float(str(l_a).replace(',', '.'))
                             b_val = float(str(l_b).replace(',', '.'))
@@ -895,7 +875,6 @@ if st.session_state.rol == "cliente":
                                 ax.text(-a_val/2 - max_dim*0.1, 0, f"B: {b_val} cm", va='center', rotation=90, fontweight='bold')
                                 st.pyplot(fig)
                                 
-                        # 5. DUCTOS CILÍNDRICOS (Solo Círculo)
                         elif "Dia1" in req_fields and diam:
                             d_val = float(str(diam).replace(',', '.'))
                             if d_val > 0:
@@ -983,8 +962,6 @@ if st.session_state.rol == "cliente":
                         if l_d: dims_str.append(f"D:{l_d}cm")
                         if l_d_desv: dims_str.append(f"d:{l_d_desv}cm")
                         if radio: dims_str.append(f"R:{radio}cm")
-                        
-                        # --- AQUÍ GUARDAMOS EL STRING COMO cm ---
                         if l_h: dims_str.append(f"H:{l_h}cm")
                         
                         if diam and diam2: dims_str.append(f"Ø1:{diam} Ø2:{diam2}cm")
@@ -1067,14 +1044,13 @@ if st.session_state.rol == "cliente":
                 conn.commit(); conn.close()
                 st.session_state.carrito_cliente = [] 
                     
-                # --- MAGIA VISUAL: MENSAJE Y GLOBOS ---
                 st.success(f"✅ ¡Pedido enviado con éxito al Taller! Se asignó el folio oficial: {numero_oficial}")
-                st.balloons() # Lanza la animación en pantalla
+                st.balloons() 
                     
                 import time
-                time.sleep(2.5) # Pausamos el código 2.5 segundos para que los usuarios disfruten los globos
+                time.sleep(2.5) 
                     
-                st.rerun() # Ahora sí, limpiamos la pantalla
+                st.rerun() 
         else: st.info("No hay piezas en este pedido todavía.")
     st.stop()
 
@@ -1240,7 +1216,7 @@ with tabs_admin[0]:
     fecha_foto = st.date_input("📸 Fecha de Evaluación de Máquinas", value=datetime.now().date())
 
     try:
-        conn_m = sqlite3.connect(DB_MANT)
+        conn_m = get_connection()
         df_maq = pd.read_sql("SELECT id, nombre, foto_path FROM maquinas", conn_m)
         df_insp = pd.read_sql("SELECT maquina_id, fecha_hora, repuesto_necesario FROM registros_inspeccion ORDER BY fecha_hora DESC", conn_m)
         conn_m.close()

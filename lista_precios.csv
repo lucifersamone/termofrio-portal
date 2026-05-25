@@ -1,0 +1,37 @@
+id,item,unidad,precio,material
+73,Cachimba,un,2880.0,Pieza Especial
+74,Caja Difusora,un,960.0,Pieza Especial
+75,Caja Difusora Esp.,un,960.0,Pieza Especial
+76,Codo,kg,160.0,Galvanizado
+77,Codo Transfor.,kg,160.0,Galvanizado
+78,Collarín,un,504.0,Pieza Especial
+79,Collarín c/ Templador,un,504.0,Pieza Especial
+80,Cono,kg,160.0,Galvanizado
+81,Cuello Normal,kg,160.0,Galvanizado
+82,Cuello Presentación,kg,160.0,Galvanizado
+83,Curva con Casquete,un,1080.0,Pieza Especial
+84,Ducto c/ Aleta,un,840.0,Pieza Especial
+85,Ducto c/ Templador,un,840.0,Pieza Especial
+86,Ducto Cil. Fe N/1 mm,kg,600.0,Fe
+87,"Ducto Cil. Fe N/1,5 mm",kg,600.0,Fe
+88,Ducto Cil. Fe N/2 mm,kg,600.0,Fe
+89,Ducto Cil. Fe N/3 mm,kg,600.0,Fe
+90,Ducto Cilindrico,kg,216.0,Galvanizado
+91,Ducto Rec. Fe N/1 mm,kg,600.0,Fe
+92,"Ducto Rec. Fe N/1,5 mm",kg,600.0,Fe
+93,Ducto Rec. Fe N/2 mm,kg,600.0,Fe
+94,Ducto Rec. Fe N/3 mm,kg,600.0,Fe
+95,Ducto Recto,kg,160.0,Galvanizado
+96,Medio Codo,kg,160.0,Galvanizado
+97,Pleno,un,12000.0,Pieza Especial
+98,S,kg,160.0,Galvanizado
+99,S Tranformada,kg,160.0,Galvanizado
+100,Tapa,kg,160.0,Galvanizado
+101,Transf. Red - Cuad,un,3524.0,Pieza Especial
+102,Transformación,kg,160.0,Galvanizado
+103,Unión c/ Lona,un,2340.0,Pieza Especial
+104,Vicera c/ Malla,un,2880.0,Pieza Especial
+105,Zapato c/ Templador,un,1320.0,Pieza Especial
+106,Zapato s/ Templador,un,1320.0,Pieza Especial
+107,Acero Inoxidable,kg,865.0,A. Inox
+108,Fe,kg,600.0,Fe

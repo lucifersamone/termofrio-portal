@@ -3,16 +3,23 @@ import pandas as pd
 import sqlite3
 import os
 import tempfile
-import requests
-import base64
-import io
 from fpdf import FPDF
 import matplotlib.pyplot as plt
 from datetime import datetime, date, timedelta
 from pandas.tseries.offsets import BusinessDay
 import numpy as np
+import urllib.parse 
 import altair as alt
+import io
 import matplotlib.patches as patches
+import psycopg2
+
+def limpiar_texto(text):
+    """Limpia caracteres especiales que causan errores en PDFs."""
+    if not isinstance(text, str): text = str(text)
+    mapping = {"–": "-", "—": "-", "…": "...", "“": '"', "”": '"', "‘": "'", "’": "'"}
+    for char, replacement in mapping.items(): text = text.replace(char, replacement)
+    return text.encode("latin-1", "replace").decode("latin-1")
 
 # --- 🔐 SEGURIDAD UNIFICADA CON ROLES ---
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
@@ -23,7 +30,7 @@ if st.session_state.get('rol') == 'cliente':
     st.error("🔒 Acceso denegado. Este portal es de uso exclusivo para administración de taller.")
     st.stop()
 
-# --- RUTAS Y CARPETAS ---
+# --- RUTAS Y CARPETAS (Adaptadas para la Nube) ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
 DB_PATH = os.path.join(ROOT_DIR, 'produccion_v55_master.db')
@@ -108,14 +115,46 @@ MAPEO_CAMPOS = {
     "Pieza especial": ["A", "B", "d", "Simetria", "C", "D", "H", "Dia1", "Dia2", "Angulo", "Casquetes", "Entrada", "Salida"]
 }
 
-# --- FUNCIONES DE CONEXIÓN Y DB ---
-def get_connection(): return sqlite3.connect(DB_PATH, check_same_thread=False)
+# --- ADAPTADOR INVISIBLE PARA SUPABASE ---
+class SQLiteToPostgresCursor:
+    def __init__(self, pg_cursor):
+        self.pg_cursor = pg_cursor
+    def execute(self, query, vars=None):
+        if vars is not None:
+            query = query.replace('?', '%s')
+        return self.pg_cursor.execute(query, vars)
+    def __getattr__(self, name):
+        return getattr(self.pg_cursor, name)
 
+class SupabaseSQLAdapter:
+    def __init__(self):
+        self.conn = psycopg2.connect(
+            host=st.secrets["DB_HOST"],
+            database=st.secrets["DB_NAME"],
+            user=st.secrets["DB_USER"],
+            port=st.secrets["DB_PORT"],
+            password=st.secrets["DB_PASS"]
+        )
+    def cursor(self):
+        return SQLiteToPostgresCursor(self.conn.cursor())
+    def commit(self):
+        self.conn.commit()
+    def close(self):
+        self.conn.close()
+    def __getattr__(self, name):
+        return getattr(self.conn, name)
+
+# --- TU FUNCIÓN AHORA APUNTANDO A LA NUBE ---
+def get_connection(): 
+    return SupabaseSQLAdapter()
+
+# --- MAGIA: EL MOTOR BLINDADO QUE TOMA EL CORRELATIVO CORRECTO ---
 def obtener_siguiente_correlativo_obra(obra_codigo, tf):
     """Busca el número de pedido más alto para una obra específica y devuelve el siguiente con prefijo OT."""
     conn = get_connection()
     c = conn.cursor()
     
+    # Blindaje contra espacios en blanco o valores nulos
     obra_segura = obra_codigo if (obra_codigo and str(obra_codigo).strip() != "" and obra_codigo != "Seleccione Obra...") else "NULO_OBRA_XYZ"
     tf_seguro = tf if (tf and str(tf).strip() != "") else "NULO_TF_XYZ"
     
@@ -227,6 +266,7 @@ def calcular_peso_teorico(desc, l_a, l_b, l_c, l_d, l_h, diam, diam2, esp):
         c = float(str(l_c).replace(',','.')) / 100 if l_c else 0.0
         d = float(str(l_d).replace(',','.')) / 100 if l_d else 0.0
         
+        # --- AQUÍ ESTÁ EL CAMBIO PARA LOS CENTÍMETROS ---
         h = float(str(l_h).replace(',','.')) / 100 if l_h else 0.0
         
         d1 = float(str(diam).replace(',','.')) / 100 if diam else 0.0
@@ -335,203 +375,71 @@ def procesar_pedido(archivo, df_precios, material_default):
     df_result = pd.DataFrame(items)
     return enc, df_result
 
-# --- ENVÍO DE CORREOS VÍA RESEND API (Reemplaza a Outlook) ---
-def enviar_correo_api(to_email, subject, html_body, attachment_path=None):
-    api_key = "re_BDpTi8ZD_5bBbZV28hy3ZgK2FaukBqjZM"
-    url = "https://api.resend.com/emails"
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    
-    data = {
-        "from": "Sistema Termofrio <onboarding@resend.dev>",
-        "to": [to_email], 
-        "subject": subject,
-        "html": html_body
-    }
-    
-    if attachment_path and os.path.exists(attachment_path):
-        with open(attachment_path, "rb") as f:
-            file_data = f.read()
-            b64_content = base64.b64encode(file_data).decode('utf-8')
-        data["attachments"] = [
-            {
-                "filename": os.path.basename(attachment_path),
-                "content": b64_content
-            }
-        ]
-        
-    try:
-        response = requests.post(url, headers=headers, json=data)
-        return response.status_code == 200
-    except:
-        return False
 
-# --- GENERADOR PDF MULTIUSO NATIVO (FPDF2) ---
+# --- LÓGICA DE PDF DE DOCUMENTOS NATIVA ---
 def generar_pdf_manual(pedido_num, tf, obra, ceco, solicitante, items_df, kg_reales, fuente="", observaciones="", tipo="despacho", men=""):
+    """Generador de PDF profesional y compatible con Nube."""
     clean_id = str(pedido_num).replace("/", "-").replace("\\", "-").strip()
     temp_dir = tempfile.gettempdir()
-    
     prefijo = "Orden_Trabajo" if tipo == "interna" else "Pedido_Despacho"
     ruta_pdf = os.path.join(temp_dir, f"{prefijo}_{clean_id}.pdf")
-    
-    class PDFManual(FPDF):
-        def header(self):
-            self.set_fill_color(44, 62, 80) # Gris industrial oscuro para taller
-            if tipo != "interna": self.set_fill_color(32, 32, 192) # Azul para despacho
-            self.rect(0, 0, 210, 35, 'F')
-            self.set_font("Arial", "B", 16)
-            self.set_text_color(255, 255, 255)
-            titulo_doc = "ORDEN DE TRABAJO INTERNA" if tipo == "interna" else "ORDEN DE FABRICACIÓN Y DESPACHO"
-            self.cell(0, 12, titulo_doc, ln=True, align="L")
-            self.set_font("Arial", "", 11)
-            self.cell(0, 4, f"Termofrio SPA - Portal de Producción", ln=True, align="L")
-            self.ln(12)
 
-        def footer(self):
-            self.set_y(-15)
-            self.set_font("Arial", "I", 8)
-            self.set_text_color(128, 128, 128)
-            self.cell(0, 10, f"Página {self.page_no()}/{{nb}} - Control de Producción Termofrio", align="C")
-
-    pdf = PDFManual()
-    pdf.alias_nb_pages()
+    pdf = FPDF(orientation='L', unit='mm', format='A4')
     pdf.add_page()
-    pdf.set_text_color(51, 51, 51)
     
-    # Bloque Informativo
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, f"DOCUMENTO REFERENCIA: {pedido_num}", ln=True)
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(4)
+    # Encabezado
+    pdf.set_font("Arial", "B", 16)
+    titulo = "ORDEN DE TRABAJO INTERNA" if tipo == "interna" else "ORDEN DE FABRICACION Y DESPACHO"
+    pdf.cell(0, 10, limpiar_texto(f"{titulo} - TERMOFRIO"), ln=True, align="C")
     
-    pdf.set_font("Arial", "B", 10)
-    pdf.cell(35, 6, "Código TF / CC:"); pdf.set_font("Arial", ""); pdf.cell(60, 6, str(tf))
-    pdf.set_font("Arial", "B", 10); pdf.cell(30, 6, "Obra Destino:"); pdf.set_font("Arial", ""); pdf.cell(65, 6, str(obra)[:30], ln=True)
+    pdf.set_font("Arial", "", 10)
+    pdf.cell(0, 8, limpiar_texto(f"Pedido: {pedido_num} | Obra: {obra} | TF: {tf}"), ln=True)
+    pdf.ln(5)
     
-    pdf.set_font("Arial", "B", 10); pdf.cell(35, 6, "CECO:"); pdf.set_font("Arial", ""); pdf.cell(60, 6, str(ceco))
-    pdf.set_font("Arial", "B", 10); pdf.cell(30, 6, "Solicitante:"); pdf.set_font("Arial", ""); pdf.cell(65, 6, str(solicitante)[:30], ln=True)
-    
-    try: kg_r = float(kg_reales)
-    except: kg_r = 0.0
-    kg_str = f"{kg_r:.1f} Kg" if kg_r > 0 else "__________ Kg"
-    
-    pdf.set_font("Arial", "B", 10); pdf.cell(35, 6, "M.E.N:"); pdf.set_font("Arial", ""); pdf.cell(60, 6, str(men))
-    pdf.set_font("Arial", "B", 10); pdf.cell(30, 6, "Kilos Reales:"); pdf.set_font("Arial", "B"); pdf.set_text_color(200,0,0); pdf.cell(65, 6, kg_str, ln=True)
-    pdf.set_text_color(51, 51, 51)
-    
-    # Alertas de Aislacion / Forro
-    alertas = []
-    if "Aislación" in str(fuente): alertas.append("AISLACIÓN INTERIOR")
-    if "Forro Metálico" in str(fuente): alertas.append("FORRO METÁLICO")
-    if alertas:
-        pdf.ln(2)
-        pdf.set_fill_color(255, 230, 230)
-        pdf.set_text_color(200, 0, 0)
-        pdf.set_font("Arial", "B", 11)
-        pdf.cell(0, 8, f"🚨 INCLUYE: {' Y '.join(alertas)} 🚨", ln=True, align="C", fill=True)
-        pdf.set_text_color(51, 51, 51)
-        
-    pdf.ln(6)
-    
-    # Dibujar la tabla de ítems
-    pdf.set_fill_color(240, 240, 240)
+    # Tabla
     pdf.set_font("Arial", "B", 9)
-    pdf.cell(15, 7, "Item", border=1, fill=True, align="C")
-    pdf.cell(40, 7, "Pieza", border=1, fill=True)
-    pdf.cell(100, 7, "Detalle Técnico de Medidas", border=1, fill=True)
-    pdf.cell(15, 7, "Cant.", border=1, fill=True, align="C")
-    pdf.cell(20, 7, "Kg", border=1, fill=True, align="C", ln=True)
+    pdf.cell(15, 8, "Item", border=1, align="C")
+    pdf.cell(80, 8, "Descripcion", border=1)
+    pdf.cell(100, 8, "Medidas/Detalles", border=1)
+    pdf.cell(20, 8, "Cant.", border=1, align="C")
+    pdf.cell(20, 8, "Kg", border=1, align="C", ln=True)
     
     pdf.set_font("Arial", "", 9)
     for _, fila in items_df.iterrows():
-        it = str(fila.get('item_num', fila.get('item_numero', '1')))
-        desc = str(fila.get('descripcion', fila.get('Descripción', '')))
-        detalles = str(fila.get('detalles', fila.get('Detalles/Medidas', ''))).replace('nan', '')
-        c_val = str(fila.get('cantidad', fila.get('Cant.', '1')))
+        pdf.cell(15, 6, limpiar_texto(str(fila.get('item_numero', ''))), border=1, align="C")
+        pdf.cell(80, 6, limpiar_texto(str(fila.get('descripcion', '')))[:45], border=1)
+        pdf.cell(100, 6, limpiar_texto(str(fila.get('detalles', '')))[:60], border=1)
+        pdf.cell(20, 6, str(fila.get('cantidad', '')), border=1, align="C")
+        peso = fila.get('peso_total', 0)
+        pdf.cell(20, 6, f"{float(peso) if peso else 0:.2f}", border=1, align="C", ln=True)
         
-        try: k_val = f"{float(fila.get('peso_total', fila.get('Kg', 0))):.1f}"
-        except: k_val = "0.0"
-        
-        top_y = pdf.get_y()
-        # Control de salto de página seguro para evitar cortes
-        if top_y > 260:
-            pdf.add_page()
-            top_y = pdf.get_y()
-            
-        pdf.cell(15, 6, it, border=1, align="C")
-        pdf.cell(40, 6, desc[:22], border=1)
-        
-        pos_x = pdf.get_x()
-        pdf.multi_cell(100, 6, detalles, border=1)
-        end_y = pdf.get_y()
-        
-        pdf.set_xy(pos_x + 100, top_y)
-        pdf.cell(15, end_y - top_y, c_val, border=1, align="C")
-        pdf.cell(20, end_y - top_y, k_val, border=1, align="C", ln=True)
-        pdf.set_y(end_y)
-
-    if observaciones and str(observaciones).strip() != "nan":
-        pdf.ln(4)
-        pdf.set_font("Arial", "B", 10)
-        pdf.cell(0, 6, "Observaciones / Comentarios:", ln=True)
-        pdf.set_font("Arial", "I", 9)
-        pdf.multi_cell(0, 5, str(observaciones), border=1)
-        
-    # --- SECCIÓN DE FIRMAS ---
-    if pdf.get_y() > 230:
-        pdf.add_page()
-        
-    pdf.ln(10)
-    pdf.set_fill_color(230, 230, 230)
-    pdf.set_font("Arial", "B", 10)
-    
-    if tipo == "interna":
-        pdf.cell(0, 8, "CONTROL DE PRODUCCIÓN EN TALLER", border=1, ln=True, align="C", fill=True)
-        pdf.cell(95, 25, "", border=1) 
-        pdf.set_xy(105, pdf.get_y() - 25)
-        pdf.cell(95, 25, "", border=1, ln=True) 
-        
-        pdf.set_xy(10, pdf.get_y() - 25)
-        pdf.set_font("Arial", "", 9)
-        pdf.cell(95, 6, "Fabricado por (Nombre y Firma Operario):", align="C", ln=True)
-        pdf.set_xy(10, pdf.get_y() + 10)
-        pdf.cell(95, 6, "___________________________________", align="C")
-        
-        pdf.set_xy(105, pdf.get_y() - 16)
-        pdf.cell(95, 6, "Revisado por (Jefe de Taller):", align="C", ln=True)
-        pdf.set_xy(105, pdf.get_y() + 10)
-        pdf.cell(95, 6, "___________________________________", align="C")
-    else:
-        pdf.cell(0, 8, "SECCIÓN DE VALIDACIÓN Y FIRMAS", border=1, ln=True, align="C", fill=True)
-        pdf.cell(95, 35, "", border=1) 
-        pdf.set_xy(105, pdf.get_y() - 35)
-        pdf.cell(95, 35, "", border=1, ln=True) 
-        
-        y_firmas = pdf.get_y() - 35
-        
-        pdf.set_xy(10, y_firmas)
-        pdf.set_font("Arial", "B", 9)
-        pdf.cell(95, 6, "Taller de Producción Termofrio", align="C", ln=True)
-        pdf.set_xy(10, pdf.get_y())
-        pdf.cell(95, 6, "Jefe Producción HVAC: Lucio Zuñiga", align="C", ln=True)
-        pdf.set_xy(10, pdf.get_y() + 15)
-        pdf.cell(95, 6, "___________________________________", align="C", ln=True)
-        
-        pdf.set_xy(105, y_firmas)
-        pdf.cell(95, 6, "Firma Supervisor", align="C", ln=True)
-        pdf.set_xy(105, pdf.get_y())
-        pdf.cell(95, 6, "Validación de Calidad", align="C", ln=True)
-        pdf.set_xy(105, pdf.get_y() + 15)
-        pdf.cell(95, 6, "___________________________________", align="C", ln=True)
-        
-        if os.path.exists(FIRMA_PATH):
-            pdf.image(FIRMA_PATH, x=45, y=y_firmas + 10, w=25)
-        if os.path.exists(TIMBRE_PATH):
-            pdf.image(TIMBRE_PATH, x=140, y=y_firmas + 8, w=25)
-            
     pdf.output(ruta_pdf)
     return ruta_pdf
 
-# --- INTERFAZ ---
+def generar_pdf_firmado(ticket_id, kg_reales=0):
+    """Wrapper para extraer datos de BD y llamar al generador."""
+    conn = get_connection()
+    try:
+        ped = pd.read_sql(f"SELECT * FROM pedidos WHERE num_pedido = '{ticket_id}'", conn)
+        if ped.empty: return None
+        items = pd.read_sql(f"SELECT * FROM items_pedido WHERE pedido_id = {ped.iloc[0]['id']}", conn)
+        return generar_pdf_manual(
+            pedido_num=ticket_id,
+            tf=ped.iloc[0]['tf'],
+            obra=ped.iloc[0]['obra_codigo'],
+            ceco=ped.iloc[0]['ceco'],
+            solicitante=ped.iloc[0]['quien_envia'],
+            items_df=items,
+            kg_reales=kg_reales,
+            observaciones=ped.iloc[0]['observaciones'],
+            tipo="despacho",
+            men=ped.iloc[0]['men']
+        )
+    finally:
+        conn.close()
+
+
+# --- INTERFAZ PRINCIPAL ---
 st.title("📦 Producción - Termofrio SPA")
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["📥 Ingreso", "📋 Gestión & Cierre", "⚙️ Configuración", "📊 Informes EDP", "📈 Dashboard"])
 
@@ -565,6 +473,7 @@ with tab1:
                 
                 if st.button("💾 Guardar Pedido (Excel)", type="primary"):
                     
+                    # --- MAGIA AQUÍ: Ignoramos el número del Excel y calculamos el correcto ---
                     numero_oficial = obtener_siguiente_correlativo_obra(obra_input, enc['tf'])
 
                     nombre_seguro = str(numero_oficial).replace("/", "-").replace("\\", "-")
@@ -621,8 +530,8 @@ with tab1:
         with col_mat: mat_manual = st.selectbox("🛠️ Material General", get_materiales_disponibles(), key="mat_manual_admin")
         with col_aisl:
             st.markdown("<br>", unsafe_allow_html=True) 
-            aislacion_manual = st.checkbox("🧊 Incluir Aislación Interior", key="chk_aisl_admin_m")
-            forro_metalico_manual = st.checkbox("🛡️ Incluir Forro Metálico", key="chk_forro_admin_m")
+            aislacion_manual = st.checkbox("🧊 Incluir Aislación Interior", key="chk_aisl_admin")
+            forro_metalico_manual = st.checkbox("🛡️ Incluir Forro Metálico", key="chk_forro_admin")
 
         st.divider()
         st.markdown("#### 🛒 1. Agregar Piezas al Pedido")
@@ -690,6 +599,7 @@ with tab1:
                 st.caption(f"📏 Sugerido por Norma SMACNA (250 Pa): {esp_smacna} mm")
                 
             with cw2:
+                # --- MAGIA EN TIEMPO REAL PARA EL PESO ---
                 peso_teorico = calcular_peso_teorico(desc_m, l_a, l_b, l_c, l_d, l_h, diam, diam2, esp_m)
                 
                 if peso_teorico > 0:
@@ -746,6 +656,7 @@ with tab1:
                         if l_c: dims_str.append(f"C:{l_c}cm")
                         if l_d: dims_str.append(f"D:{l_d}cm")
                         if l_d_desv: dims_str.append(f"d:{l_d_desv}cm")
+                        
                         if l_h: dims_str.append(f"H:{l_h}cm")
                         
                         if diam and diam2: dims_str.append(f"Ø1:{diam} Ø2:{diam2}cm")
@@ -778,7 +689,7 @@ with tab1:
                         st.success(f"✅ Pieza agregada exitosamente.")
                         st.rerun()
 
-        st.divider()
+                        st.divider()
         st.markdown("#### 📋 2. Resumen del Pedido Manual")
         
         if len(st.session_state.carrito_admin) > 0:
@@ -807,6 +718,8 @@ with tab1:
                 if obra_manual == "Seleccione Obra..." or not quien_manual.strip() or not correo_manual.strip():
                     st.error("❌ Falta información: Obra, Solicitante y Correo son campos obligatorios.")
                 else:
+                    
+                    # --- MAGIA AQUÍ TAMBIÉN ---
                     numero_oficial = obtener_siguiente_correlativo_obra(obra_manual, tf_manual)
 
                     conn = get_connection(); c = conn.cursor()
@@ -875,6 +788,7 @@ with tab2:
             })
             st.dataframe(df_items_display, use_container_width=True, hide_index=True)
             
+          # --- Alerta visual en pantalla de MEN, Comentarios y EXTRAS ---
             alertas_ui = []
             if "Aislación" in str(fila_pedido_ver['fuente']): alertas_ui.append("🧊 AISLACIÓN INTERIOR")
             if "Forro Metálico" in str(fila_pedido_ver['fuente']): alertas_ui.append("🛡️ FORRO METÁLICO")
@@ -892,7 +806,7 @@ with tab2:
             
             with col_doc1:
                 if st.button("📄 Generar Orden de Trabajo (PDF)", key="btn_ot_interna"):
-                    with st.spinner("Generando Orden de Trabajo de forma nativa..."):
+                    with st.spinner("Generando Orden de Trabajo..."):
                         ruta_pdf_ot = generar_pdf_manual(
                             pedido_num=fila_pedido_ver['num_pedido'],
                             tf=fila_pedido_ver['tf'],
@@ -960,7 +874,7 @@ with tab2:
             st.dataframe(pend_fifo[['Turno_Fila', 'nivel_urgencia', 'num_pedido', 'obra_codigo', 'quien_envia', 'fecha_recepcion', 'Entrega Estimada']], use_container_width=True, hide_index=True)
 
             with st.expander("Ver Herramienta de Correos y Notificaciones", expanded=False):
-                st.markdown("##### ✉️ PASO 1: Notificar Programación al Cliente (Vía Nube)")
+                st.markdown("##### ✉️ PASO 1: Notificar Programación al Cliente")
                 st.info(f"El promedio de entrega histórico del taller es de **{promedio_dias_real} días**.")
                 sel_p = st.selectbox("Seleccionar Pedido a notificar:", pend_fifo['num_pedido'].astype(str) + " / " + pend_fifo['obra_codigo'])
                 d = pend_fifo[pend_fifo['num_pedido'].astype(str) + " / " + pend_fifo['obra_codigo'] == sel_p].iloc[0]
@@ -978,35 +892,25 @@ with tab2:
                 asunto_correo = f"Programación de Fabricación - Pedido N° {d['num_pedido']} - Obra {d['obra_codigo']}"
                 fecha_est_str = d['Entrega Estimada'].strftime('%d/%m/%Y')
                 
-                texto_html = f"""<div style="font-family: Calibri, Arial, sans-serif; font-size: 14px; color: #333;">
-<p>Estimados,</p>
-<p>Junto con saludar, informamos que su pedido ha sido ingresado exitosamente a nuestro sistema y se encuentra en cola de fabricación.</p>
-<p>Para garantizar la equidad y transparencia, la producción se programa estrictamente por orden de llegada (fecha y hora en que se ingresa a plataforma).<br>
-Actualmente, su pedido se encuentra en el <b>Turno N° {d['Turno_Fila']}</b> de nuestra fila de pendientes.</p>
-<p><u>Información importante de plazos:</u><br>
-- El promedio histórico de respuesta de nuestro taller, considerando la carga habitual, es de {promedio_dias_real} días de fabricación.<br>
-- Sin embargo, por procedimiento oficial, el taller cuenta con un plazo máximo estandarizado de hasta <b>5 días hábiles</b> para dar cumplimiento a cualquier solicitud.</p>
-<div style="background-color: #fff3cd; padding: 12px; border-left: 5px solid #ffc107; margin: 15px 0;">
-<span style="font-size: 15px;"><strong>➡️ En base a la carga de trabajo actual, la fecha estimada de entrega para su pedido es el {fecha_est_str}</strong></span>
-</div>
-<p>Estamos trabajando para gestionar su pedido a la brevedad posible dentro de nuestros estándares de calidad.</p>
-<p>Agradecemos su comprensión.<br><b>Departamento de Producción - Termofrio SPA</b></p>
-</div>"""
+                texto_html = f"""Estimados,\n
+Junto con saludar, informamos que su pedido ha sido ingresado exitosamente a nuestro sistema y se encuentra en cola de fabricación.\n
+Para garantizar la equidad y transparencia, la producción se programa estrictamente por orden de llegada.\n
+Actualmente, su pedido se encuentra en el Turno N° {d['Turno_Fila']} de nuestra fila de pendientes.\n\n
+Información importante de plazos:\n
+- El promedio histórico de respuesta de nuestro taller es de {promedio_dias_real} días de fabricación.\n
+- El plazo máximo estandarizado es de hasta 5 días hábiles.\n\n
+➡️ En base a la carga de trabajo actual, la fecha estimada de entrega para su pedido es el {fecha_est_str}\n\n
+Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                 
-                if correo_destino: st.success(f"✅ Correo asociado listo para envío a: {correo_destino}")
+                if correo_destino: st.success(f"✅ Se asoció el correo: {correo_destino}")
                 else: st.warning(f"⚠️ No se encontró correo para '{solicitante_db}'. Puedes agregarlo en la pestaña de Configuración.")
 
-                if st.button("📧 Enviar Notificación (Vía Sistema)", key="btn_notif_nube"):
-                    if not correo_destino:
-                        st.error("No se puede enviar porque no hay un correo de destino válido configurado.")
-                    else:
-                        with st.spinner("Enviando correo desde la nube..."):
-                            exito = enviar_correo_api(correo_destino, asunto_correo, texto_html)
-                            if exito:
-                                st.success("✅ ¡Notificación enviada con éxito directamente al cliente!")
-                            else:
-                                st.error("❌ Ocurrió un error al enviar el correo. Verifique la API o la conexión.")
-        
+                if correo_destino:
+                    subj_enc = urllib.parse.quote(asunto_correo)
+                    body_enc = urllib.parse.quote(texto_html)
+                    mailto_url = f"mailto:{correo_destino}?subject={subj_enc}&body={body_enc}"
+                    st.link_button("📧 Enviar Notificación por Correo", mailto_url, type="primary")
+
         st.divider()
 
         c1, c2 = st.columns(2)
@@ -1026,7 +930,7 @@ Actualmente, su pedido se encuentra en el <b>Turno N° {d['Turno_Fila']}</b> de 
 
         with c2:
             st.subheader("📄 PASO 3: Generar PDF Final de Despacho")
-            st.caption("Firma automática del PDF finalizado.")
+            st.caption("Generación automática del PDF finalizado.")
             term = dfp[dfp['estado']=='Terminado']
             if not term.empty:
                 sel_pdf = st.selectbox("Seleccionar Pedido Terminado:", term['num_pedido'].astype(str) + " / " + term['obra_codigo'])
@@ -1034,72 +938,51 @@ Actualmente, su pedido se encuentra en el <b>Turno N° {d['Turno_Fila']}</b> de 
                 if st.button("🚀 Procesar PDF Automático", key="btn_proc_pdf"):
                     fila_pdf = term[term['num_pedido'].astype(str) + " / " + term['obra_codigo']==sel_pdf].iloc[0]
                     
-                    with st.spinner("Generando PDF Dinámico nativo en la Nube..."):
-                        conn_pdf = get_connection()
-                        df_items_pdf = pd.read_sql(f"SELECT * FROM items_pedido WHERE pedido_id={fila_pdf['id']}", conn_pdf)
-                        obs_query = pd.read_sql(f"SELECT observaciones, men FROM pedidos WHERE id={fila_pdf['id']}", conn_pdf)
-                        conn_pdf.close()
-                        
-                        obs_txt_fin = obs_query.iloc[0]['observaciones'] if not obs_query.empty else ""
-                        men_txt_fin = obs_query.iloc[0]['men'] if not obs_query.empty and 'men' in obs_query.columns else ""
-
-                        ruta_pdf = generar_pdf_manual(
-                            pedido_num=fila_pdf['num_pedido'],
-                            tf=fila_pdf['tf'],
-                            obra=fila_pdf['obra_codigo'],
-                            ceco=fila_pdf['ceco'],
-                            solicitante=fila_pdf['quien_envia'],
-                            items_df=df_items_pdf,
-                            kg_reales=fila_pdf['kg_reales'],
-                            fuente=fila_pdf['fuente'],
-                            observaciones=obs_txt_fin,
-                            tipo="despacho",
-                            men=men_txt_fin
-                        )
-                        
+                    with st.spinner("Generando PDF Oficial de Despacho..."):
+                        ruta_pdf = generar_pdf_firmado(ticket_id=fila_pdf['num_pedido'], kg_reales=fila_pdf['kg_reales'])
                         if ruta_pdf:
                             st.session_state.pdf_tmp = ruta_pdf
                             st.session_state.pdf_num = fila_pdf['num_pedido']
                             st.session_state.pdf_obra = fila_pdf['obra_codigo']
                             st.session_state.pdf_solic = str(fila_pdf.get('quien_envia', '')).strip()
                             st.session_state.pdf_kg = fila_pdf['kg_reales']
-                            st.success("✅ Archivo PDF Generado exitosamente sin depender de Excel.")
+                            st.success("✅ Archivo PDF Generado exitosamente.")
+                        else:
+                            st.error("❌ Error al generar el PDF.")
                 
                 if 'pdf_tmp' in st.session_state and os.path.exists(st.session_state.pdf_tmp):
                     st.markdown("<br>", unsafe_allow_html=True)
-                    col_dl, col_mail = st.columns(2)
-                    with open(st.session_state.pdf_tmp, "rb") as f:
-                        col_dl.download_button("📥 Descargar PDF a mi PC", f, file_name=f"Pedido_Despacho_{st.session_state.pdf_num}.pdf", key="btn_dl_pdf")
                     
-                    if col_mail.button("📧 Enviar Despacho Adjunto (Vía Sistema)", key="btn_out_adjunto"):
-                        correo_dest = ""
-                        try:
-                            conn_c = get_connection()
-                            df_c = pd.read_sql(f"SELECT correo FROM directorio_solicitantes WHERE nombre='{st.session_state.pdf_solic}'", conn_c)
-                            conn_c.close()
-                            if not df_c.empty: correo_dest = str(df_c.iloc[0]['correo']).strip()
-                        except: pass
+                    with open(st.session_state.pdf_tmp, "rb") as f:
+                        st.download_button("📥 1. Descargar PDF a mi PC", f, file_name=f"Pedido_Despacho_{st.session_state.pdf_num}.pdf", key="btn_dl_pdf", type="primary")
+                    
+                    correo_dest = ""
+                    try:
+                        conn_c = get_connection()
+                        df_c = pd.read_sql(f"SELECT correo FROM directorio_solicitantes WHERE nombre='{st.session_state.pdf_solic}'", conn_c)
+                        conn_c.close()
+                        if not df_c.empty: correo_dest = str(df_c.iloc[0]['correo']).strip()
+                    except: pass
 
-                        html_despacho = f"""<div style="font-family: Calibri, Arial, sans-serif; font-size: 14px; color: #333;">
-<p>Estimados,</p>
-<p>Junto con saludar, informamos que su <b>Pedido N° {st.session_state.pdf_num}</b> (Obra: {st.session_state.pdf_obra}) se encuentra <span style="background-color: #d4edda; font-size: 15px; padding: 3px;"><b>terminado y listo para retiro/despacho</b></span>.</p>
-<p><b>⚖️ Peso Total Fabricado:</b> {st.session_state.pdf_kg} Kg.</p>
-<p>Adjuntamos a este correo el documento PDF oficial con el detalle, peso, firmas y timbres correspondientes de nuestro taller para su respaldo.</p>
-<p>Quedamos a su disposición para coordinar la entrega.</p>
-<p>Saludos cordiales,<br><b>Departamento de Producción - Termofrio SPA</b></p>
-</div>"""
-                        if not correo_dest:
-                            st.error("No se pudo enviar: No hay correo configurado para el solicitante.")
-                        else:
-                            with st.spinner("Enviando correo con PDF adjunto..."):
-                                asun = f"Pedido Listo para Retiro/Despacho - N° {st.session_state.pdf_num} - Obra {st.session_state.pdf_obra}"
-                                e = enviar_correo_api(correo_dest, asun, html_despacho, attachment_path=st.session_state.pdf_tmp)
-                                if e: st.success("✅ ¡Correo de despacho enviado exitosamente con el PDF adjunto!")
-                                else: st.error("❌ Fallo en el envío del correo.")
+                    html_despacho = f"""Estimados,\n
+Junto con saludar, informamos que su Pedido N° {st.session_state.pdf_num} (Obra: {st.session_state.pdf_obra}) se encuentra terminado y listo para retiro/despacho.\n
+⚖️ Peso Total Fabricado: {st.session_state.pdf_kg} Kg.\n
+Favor recordar adjuntar el documento PDF oficial descargado de la plataforma a este correo para el respaldo.\n
+Quedamos a su disposición para coordinar la entrega.\n\nSaludos cordiales,\nDepartamento de Producción - Termofrio SPA"""
+                    
+                    st.info("⚠️ Descarga el PDF primero usando el botón de arriba, y luego adjúntalo manualmente en tu correo.")
+                    
+                    if correo_dest:
+                        subj_enc = urllib.parse.quote(f"Pedido Listo para Retiro/Despacho - N° {st.session_state.pdf_num} - Obra {st.session_state.pdf_obra}")
+                        body_enc = urllib.parse.quote(html_despacho)
+                        mailto_url = f"mailto:{correo_dest}?subject={subj_enc}&body={body_enc}"
+                        st.link_button("📧 2. Abrir Borrador de Correo", mailto_url)
+
         st.divider()
         st.subheader("🚚 PASO 4: Registrar Salida a Terreno (Despacho)")
         st.caption("Marca los pedidos que ya fueron retirados físicamente del taller para descontarlos de la tarjeta de Listos en Taller.")
         
+        # Prevenimos nulos en pedidos antiguos
         if 'estado_despacho' not in dfp.columns: dfp['estado_despacho'] = 'En Taller'
         dfp['estado_despacho'] = dfp['estado_despacho'].fillna('En Taller')
         
@@ -1512,12 +1395,14 @@ with tab5:
             df_merge['Fierro (FE)'] = df_merge['FE'] + df_merge['kg_hist_fe']
             df_merge['Acero Inox'] = df_merge['INOX'] + df_merge['kg_hist_inox']
             
+            # --- REEMPLAZAR DESDE AQUÍ ---
             st.subheader("📊 Avance y Saldo de Contratos (SOLO GALVANIZADO)")
             st.caption("Visualiza el total del contrato, lo que ya se fabricó y **el saldo que va restando**.")
             
             df_general = df_merge[(df_merge['kg_contrato'] > 0) | (df_merge['Galvanizado Total'] > 0)].copy()
             
             if not df_general.empty:
+                # LA MAGIA MATEMÁTICA: Calculamos explícitamente el saldo restante
                 df_general['Total Contratado'] = df_general['kg_contrato'] + df_general['kg_adicionales']
                 df_general['Saldo Restante'] = df_general['Total Contratado'] - df_general['Galvanizado Total']
                 
@@ -1531,6 +1416,7 @@ with tab5:
                 df_melt = df_plot_general.melt('obra_codigo', var_name='Categoría', value_name='Kilos')
                 df_melt_labels = df_melt[df_melt['Kilos'] != 0] 
                 
+                # Colores intuitivos: Contrato (Azul), Fabricado (Naranja), Saldo Restante (Verde)
                 color_scale_avance = alt.Scale(
                     domain=['1. Total Contrato', '2. Ya Fabricado', '3. Saldo Restante'],
                     range=['#2980b9', '#e67e22', '#27ae60'] 
@@ -1562,6 +1448,7 @@ with tab5:
 
             else:
                 st.info("Ingresa los datos del contrato en Configuración para ver las comparativas.")
+            # --- HASTA AQUÍ EL REEMPLAZO ---
                     
             st.divider()
             st.subheader("🧱 Total Kilos Fabricados por Material")
@@ -1598,3 +1485,6 @@ with tab5:
                 st.altair_chart((bars_mat + text_mat).properties(height=400), use_container_width=True)
             else:
                 st.info("Cierra pedidos o ingresa históricos para ver el gráfico de materiales.")
+
+
+

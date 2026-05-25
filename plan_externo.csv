@@ -1,0 +1,48 @@
+id,maquina_id,fecha_programada,proveedor,estado,evidencia_pdf_path,fecha_realizacion,evaluacion_proveedor
+1,CILINDRADORA_1,2026-02-02,Externo,Programado,,,
+2,CILINDRADORA_1,2026-08-01,Externo,Programado,,,
+3,CILINDRADORA_2,2026-02-02,Externo,Programado,,,
+4,CILINDRADORA_2,2026-08-01,Externo,Programado,,,
+7,CILINDRADORA_1,2026-02-09,Externo,Programado,,,
+8,CILINDRADORA_1,2026-02-09,Externo,Realizado,,2026-02-16,Atrasado
+9,CILINDRADORA_1,2026-02-09,Externo,Realizado,,2026-02-09,A Tiempo
+10,CILINDRADORA_2,2026-02-09,Externo,Realizado,,2026-02-09,A Tiempo
+11,TDF_1,2026-01-20,Externo,Realizado,,2026-01-22,Atrasado
+12,TDF_1,2026-10-01,Externo,Realizado,C:\Users\taller\OneDrive - Termofrio Ltda\Control Taller 2025\SISTEMA_INTEGRAL_TERMOFRIO\evidencias_externas\EVID_12_Termofrio SpA. Plegadora TDF7 tablero control 01-2026.pdf,2026-01-22,A Tiempo
+13,TDF_2,2026-01-20,Externo,Realizado,,2026-01-22,Atrasado
+14,TDF_2,2026-10-01,Externo,Programado,,,
+15,TDF_1,2026-01-01,Externo,Realizado,,2026-02-16,Atrasado
+16,TDF_1,2026-10-01,Externo,Programado,,,
+17,TDF_1,2026-01-01,Externo,Realizado,,2026-01-22,Atrasado
+18,TDF_1,2026-10-01,Externo,Programado,,,
+21,RODONADORA_1,2026-02-02,Externo,Realizado,,2026-02-17,Atrasado
+22,RODONADORA_1,2026-07-01,Externo,Programado,,,
+23,RODONADORA_2,2026-02-02,Externo,Realizado,,2026-02-17,Atrasado
+24,RODONADORA_2,2026-07-01,Externo,Programado,,,
+25,RODONADORA_3_ELECTRICA,2026-02-02,Externo,Realizado,,2026-02-17,Atrasado
+26,RODONADORA_3_ELECTRICA,2026-07-01,Externo,Programado,,,
+27,GUILLOTINA_1,2026-05-04,Eims,Realizado,,2026-04-01,
+28,GUILLOTINA_2,2026-05-04,Externo,Programado,,,
+35,CNC_1_PLASMA,2026-01-01,Externo,Realizado,,2026-02-17,Atrasado
+36,CNC_1_PLASMA,2026-09-01,Externo,Programado,,,
+39,CNC_2_PLASMA,2026-02-01,Externo,Realizado,,2026-02-17,A Tiempo
+40,CNC_2_PLASMA,2026-10-01,Externo,Programado,,,
+41,PESTANERA_1_PIPO,2026-04-01,Externo,Programado,,,
+42,PESTANERA_1_PIPO,2026-11-01,Externo,Programado,,,
+45,COILINE,2026-12-01,Externo,Programado,,,
+46,PESTANERA_2_TRIPLE,2026-04-01,Externo,Programado,,,
+47,PESTANERA_2_TRIPLE,2026-11-01,Externo,Programado,,,
+48,PESTANERA_3_BALLETA,2026-04-01,Externo,Programado,,,
+49,PESTANERA_3_BALLETA,2026-11-01,Externo,Programado,,,
+50,PESTANERA_4_BALLETA,2026-04-01,Externo,Programado,,,
+51,PESTANERA_4_BALLETA,2026-11-01,Externo,Programado,,,
+52,PESTANERA_5_PIPO,2026-04-01,Externo,Programado,,,
+53,PESTANERA_5_PIPO,2026-11-01,Externo,Programado,,,
+54,PESTANERA_6_RODONADORA,2026-04-01,Externo,Programado,,,
+55,PESTANERA_6_RODONADORA,2026-11-01,Externo,Programado,,,
+56,EMBALLETADORA,2026-04-01,Externo,Programado,,,
+57,EMBALLETADORA,2026-11-01,Externo,Programado,,,
+58,PLEGADORA_1,2026-12-01,Externo,Programado,,,
+59,PLEGADORA_2,2026-12-01,Externo,Programado,,,
+60,PLEGADORA_3,2026-12-01,Externo,Programado,,,
+61,PLEGADORA_4,2026-12-01,Externo,Programado,,,
