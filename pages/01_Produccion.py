@@ -159,7 +159,7 @@ MAPEO_CAMPOS = {
     "Pieza especial": ["A", "B", "d", "Simetria", "C", "D", "H", "Dia1", "Dia2", "Angulo", "Casquetes", "Entrada", "Salida"]
 }
 
-# --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.3 CON SOPORTE EXECUTEMANY) ---
+# --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.3 - COMPLETO Y UNIFICADO) ---
 class SQLiteToPostgresCursor:
     def __init__(self, pg_cursor):
         self.pg_cursor = pg_cursor
@@ -181,7 +181,7 @@ class SQLiteToPostgresCursor:
         return self.pg_cursor.execute(query, vars)
         
     def executemany(self, query, vars_list=None):
-        # 🔥 NUEVO: Traductor y limpiador para inserciones masivas de ítems (Excel)
+        # Soporte para inserciones masivas de ítems desde el Excel
         if vars_list is not None:
             query = query.replace('?', '%s')
             cleaned_vars_list = []
@@ -202,6 +202,32 @@ class SQLiteToPostgresCursor:
         
     def __getattr__(self, name):
         return getattr(self.pg_cursor, name)
+
+class SupabaseSQLAdapter:
+    def __init__(self):
+        self.conn = psycopg2.connect(
+            host=st.secrets["DB_HOST"],
+            database=st.secrets["DB_NAME"],
+            user=st.secrets["DB_USER"],
+            port=st.secrets["DB_PORT"],
+            password=st.secrets["DB_PASS"]
+        )
+        self.conn.autocommit = True
+        
+    def cursor(self):
+        return SQLiteToPostgresCursor(self.conn.cursor())
+
+    def commit(self):
+        pass
+
+    def close(self):
+        self.conn.close()
+
+    def __getattr__(self, name):
+        return getattr(self.conn, name)
+
+def get_connection(): 
+    return SupabaseSQLAdapter()
 
 # --- MAGIA: EL MOTOR BLINDADO QUE TOMA EL CORRELATIVO CORRECTO ---
 def obtener_siguiente_correlativo_obra(obra_codigo, tf):
