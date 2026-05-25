@@ -1341,23 +1341,40 @@ with tab4:
                     df_ajustado = pd.concat([df_ajustado, df_p])
         res = []
 
-        # 🔥 TRADUCTOR INTELIGENTE (Dentro del bloque a 8 espacios)
-        mapeo_columnas = {}
-        for col in df_ajustado.columns:
-            col_limpia = str(col).strip().lower()
-            if col_limpia == 'ceco':
-                mapeo_columnas[col] = 'ceco'
-            elif col_limpia in ['obra_codigo', 'obra_cod', 'obra', 'obra código']:
-                mapeo_columnas[col] = 'obra_codigo'
-            elif col_limpia in ['tipo_edp']:
-                mapeo_columnas[col] = 'TIPO_EDP'
-            elif col_limpia in ['peso_total', 'pesototal']:
-                mapeo_columnas[col] = 'peso_total'
-            elif col_limpia in ['total_linea', 'totallinea', 'total_línea']:
-                mapeo_columnas[col] = 'total_linea'
+    # 🔥 TRADUCTOR INTELIGENTE EXTENDIDO (Soporta múltiples variaciones de nombres de columna)
+    mapeo_columnas = {}
+    for col in df_ajustado.columns:
+        col_limpia = str(col).strip().lower()
+        
+        # Variaciones para Centro de Costos
+        if col_limpia in ['ceco', 'centro de costo', 'centro de costos', 'centro costo', 'centro costos', 'cc', 'c.c.', 'n° ceco']:
+            mapeo_columnas[col] = 'ceco'
+            
+        # Variaciones para el Código de la Obra
+        elif col_limpia in ['obra_codigo', 'obra_cod', 'obra', 'obra código', 'código obra', 'codigo obra', 'cod_obra', 'cod. obra', 'n° obra']:
+            mapeo_columnas[col] = 'obra_codigo'
+            
+        # Variaciones para el Tipo de Estado de Pago
+        elif col_limpia in ['tipo_edp', 'tipo edp', 'tipo']:
+            mapeo_columnas[col] = 'TIPO_EDP'
+            
+        # Variaciones para Pesos
+        elif col_limpia in ['peso_total', 'pesototal', 'peso total', 'kg', 'kilogramos', 'peso']:
+            mapeo_columnas[col] = 'peso_total'
+            
+        # Variaciones para Totales de línea
+        elif col_limpia in ['total_linea', 'totallinea', 'total_línea', 'total linea', 'total línea', 'total']:
+            mapeo_columnas[col] = 'total_linea'
 
-        df_ajustado.rename(columns=mapeo_columnas, inplace=True)
+    df_ajustado.rename(columns=mapeo_columnas, inplace=True)
 
+    # 🛡️ ESCUDO DE SEGURIDAD: Valida si las columnas críticas existen antes de agrupar
+    columnas_actuales = df_ajustado.columns.tolist()
+    if 'ceco' not in columnas_actuales or 'obra_codigo' not in columnas_actuales:
+        st.error("⚠️ **Error en los encabezados del Excel:** El archivo subido no contiene las columnas necesarias de 'CECO' o 'Obra'.")
+        st.info(f"**Columnas detectadas en tu archivo:** {columnas_actuales}")
+        st.warning("Por favor, verifica que los nombres de las columnas en el Excel coincidan o avísame para agregar la nueva variación al traductor.")
+        st.stop() # Detiene la app limpiamente sin lanzar pantallas rojas de código
         for (ceco, obra), g in df_ajustado.groupby(['ceco', 'obra_codigo']):
             res.append({
                 "CECO": ceco, "OBRA": obra,
