@@ -17,68 +17,49 @@ from fpdf import FPDF
 import psycopg2
 import re
 
-# --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.2 CON TRADUCTOR DE TIPOS NUMÉRICOS) ---
+# --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.3 CON SOPORTE EXECUTEMANY) ---
 class SQLiteToPostgresCursor:
     def __init__(self, pg_cursor):
         self.pg_cursor = pg_cursor
         
     def execute(self, query, vars=None):
-        # 1. Traducir variables: '?' de SQLite a '%s' de Postgres
         if vars is not None:
             query = query.replace('?', '%s')
-            
-            # 🔥 PIEZA CLAVE: Convierte formatos numéricos de ingeniería (NumPy/Pandas) 
-            # a números nativos de Python para evitar el error 'InvalidSchemaName'
             cleaned_vars = []
             for v in vars:
                 if hasattr(v, 'item') and callable(getattr(v, 'item')):
-                    cleaned_vars.append(v.item()) # .item() extrae el número puro sin el "np.float64"
+                    cleaned_vars.append(v.item())
                 else:
                     cleaned_vars.append(v)
             vars = tuple(cleaned_vars)
             
-        # 2. Reparar comillas en alias: Cambia AS 'N° Pedido' por AS "N° Pedido"
         query = re.sub(r"(?i)\bas\s+'([^']+)'", r'AS "\1"', query)
-        
-        # 3. Reparar corchetes: Cambia [tabla] o [columna] por comillas dobles
         query = query.replace('[', '"').replace(']', '"')
-        
-        # 4. Mapeo de tablas: Cambia automáticamente "pedidos" por "pedidostf"
         query = re.sub(r'(?i)\bpedidos\b', 'pedidostf', query)
-        
         return self.pg_cursor.execute(query, vars)
+        
+    def executemany(self, query, vars_list=None):
+        # 🔥 NUEVO: Traductor y limpiador para inserciones masivas de ítems (Excel)
+        if vars_list is not None:
+            query = query.replace('?', '%s')
+            cleaned_vars_list = []
+            for vars in vars_list:
+                cleaned_vars = []
+                for v in vars:
+                    if hasattr(v, 'item') and callable(getattr(v, 'item')):
+                        cleaned_vars.append(v.item())
+                    else:
+                        cleaned_vars.append(v)
+                cleaned_vars_list.append(tuple(cleaned_vars))
+            vars_list = cleaned_vars_list
+            
+        query = re.sub(r"(?i)\bas\s+'([^']+)'", r'AS "\1"', query)
+        query = query.replace('[', '"').replace(']', '"')
+        query = re.sub(r'(?i)\bpedidos\b', 'pedidostf', query)
+        return self.pg_cursor.executemany(query, vars_list)
         
     def __getattr__(self, name):
         return getattr(self.pg_cursor, name)
-
-class SupabaseSQLAdapter:
-    def __init__(self):
-        self.conn = psycopg2.connect(
-            host=st.secrets["DB_HOST"],
-            database=st.secrets["DB_NAME"],
-            user=st.secrets["DB_USER"],
-            port=st.secrets["DB_PORT"],
-            password=st.secrets["DB_PASS"]
-        )
-        # Guarda de inmediato y evita que el Pooler corte la conexión
-        self.conn.autocommit = True
-        
-    def cursor(self):
-        return SQLiteToPostgresCursor(self.conn.cursor())
-
-    def commit(self):
-        # Desactivado porque autocommit=True ya hace el trabajo solo
-        pass
-
-    def close(self):
-        self.conn.close()
-
-    def __getattr__(self, name):
-        return getattr(self.conn, name)
-
-# --- LA FUNCIÓN MAESTRA ---
-def get_connection(): 
-    return SupabaseSQLAdapter()
     
 # Configuración extendida de página
 st.set_page_config(page_title="Dashboard Fabricacion Ductos", page_icon="termofrio.ico", layout="wide")
@@ -1171,6 +1152,8 @@ with tabs_admin[0]:
         conn_p = get_connection()
         df_ped = pd.read_sql("SELECT * FROM pedidos WHERE estado='Terminado'", conn_p)
         df_items = pd.read_sql("SELECT * FROM items_pedido", conn_p)
+        if 'num_pedido' in df_items.columns:
+            df_items['num_pedido'] = df_items['num_pedido'].astype(str).str.strip()
         conn_p.close()
         
         if not df_ped.empty:
