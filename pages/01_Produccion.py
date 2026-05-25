@@ -1342,35 +1342,50 @@ with tab4:
                     
                 res = []
 
-                # 🔥 LIMPIEZA DE SEGURIDAD BLINDADA (Quita espacios y asegura ceco/obra_codigo sin romper mayúsculas)
-                df_ajustado.columns = [str(c).strip() for c in df_ajustado.columns]
-                df_ajustado.rename(columns={'CECO': 'ceco', 'OBRA_CODIGO': 'obra_codigo'}, inplace=True)
+                # 🔥 TRADUCTOR INTELIGENTE (Evita KeyError mapeando cualquier variación de mayúsculas o espacios)
+    mapeo_columnas = {}
+    for col in df_ajustado.columns:
+        col_limpia = str(col).strip().lower()
+        if col_limpia == 'ceco':
+            mapeo_columnas[col] = 'ceco'
+        elif col_limpia in ['obra_codigo', 'obra_cod', 'obra', 'obra código']:
+            mapeo_columnas[col] = 'obra_codigo'
+        elif col_limpia in ['tipo_edp']:
+            mapeo_columnas[col] = 'TIPO_EDP'  # Forzamos mayúscula para tus filtros internos
+        elif col_limpia in ['peso_total', 'pesototal']:
+            mapeo_columnas[col] = 'peso_total'
+        elif col_limpia in ['total_linea', 'totallinea', 'total_línea']:
+            mapeo_columnas[col] = 'total_linea'
 
-                for (ceco, obra), g in df_ajustado.groupby(['ceco', 'obra_codigo']):
-                        res.append({
-                            "CECO": ceco, "OBRA": obra,
-                            "KG_GALV": round(g[g['TIPO_EDP']=='GALV']['peso_total'].sum(), 1), "$ GALV": round(g[g['TIPO_EDP']=='GALV']['total_linea'].sum(), 0),
-                            "KG_FE": round(g[g['TIPO_EDP']=='FE']['peso_total'].sum(), 1), "$ FE": round(g[g['TIPO_EDP']=='FE']['total_linea'].sum(), 0),
-                            "KG_ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['peso_total'].sum(), 1), "$ ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['total_linea'].sum(), 0)
-                        })
+    df_ajustado.rename(columns=mapeo_columnas, inplace=True)
+
+    # Tu bucle groupby (ahora sí, protegido contra todo)
+    for (ceco, obra), g in df_ajustado.groupby(['ceco', 'obra_codigo']):
+        res.append({
+            "CECO": ceco, "OBRA": obra,
+            "KG_GALV": round(g[g['TIPO_EDP']=='GALV']['peso_total'].sum(), 1), "$ GALV": round(g[g['TIPO_EDP']=='GALV']['total_linea'].sum(), 0),
+            "KG_FE": round(g[g['TIPO_EDP']=='FE']['peso_total'].sum(), 1), "$ FE": round(g[g['TIPO_EDP']=='FE']['total_linea'].sum(), 0),
+            "KG_ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['peso_total'].sum(), 1), "$ ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['total_linea'].sum(), 0)
+        })
+
+    # Líneas finales correctamente alineadas fuera del for
+    df_edp_final = pd.DataFrame(res)
+    totales = pd.DataFrame([{"CECO": "TOTALES", "OBRA": "---", "KG_GALV": df_edp_final["KG_GALV"].sum(), "$ GALV": df_edp_final["$ GALV"].sum(), "KG_FE": df_edp_final["KG_FE"].sum(), "$ FE": df_edp_final["$ FE"].sum(), "KG_ESP": df_edp_final["KG_ESP"].sum(), "$ ESP": df_edp_final["$ ESP"].sum()}])
+    df_edp_final = pd.concat([df_edp_final, totales], ignore_index=True)
                 
-                df_edp_final = pd.DataFrame(res)
-                totales = pd.DataFrame([{"CECO": "TOTALES", "OBRA": "---", "KG GALV": df_edp_final["KG GALV"].sum(), "$ GALV": df_edp_final["$ GALV"].sum(), "KG FE": df_edp_final["KG FE"].sum(), "$ FE": df_edp_final["$ FE"].sum(), "KG ESP": df_edp_final["KG ESP"].sum(), "$ ESP": df_edp_final["$ ESP"].sum()}])
-                df_edp_final = pd.concat([df_edp_final, totales], ignore_index=True)
+    st.divider()
+    st.write("### Tabla de Datos (Selecciona y copia directamente)")
+    st.dataframe(df_edp_final, use_container_width=True, hide_index=True)
+    st.download_button("📥 Descargar CSV para Excel", df_edp_final.to_csv(index=False).encode('utf-8-sig'), "EDP_Periodo.csv", "text/csv")
                 
-                st.divider()
-                st.write("### Tabla de Datos (Selecciona y copia directamente)")
-                st.dataframe(df_edp_final, use_container_width=True, hide_index=True)
-                st.download_button("📥 Descargar CSV para Excel", df_edp_final.to_csv(index=False).encode('utf-8-sig'), "EDP_Periodo.csv", "text/csv")
+    st.divider()
+    st.markdown("### 🧊 Calculadora de Bono por Aislación Interior")
+    st.info("Marque manualmente en la columna 'Aplica Bono' los pedidos que llevan aislación interior (Ej: pedidos de Natanael Aviel confirmados por correo). El bono se calcula a $500 por M2.")
                 
-                st.divider()
-                st.markdown("### 🧊 Calculadora de Bono por Aislación Interior")
-                st.info("Marque manualmente en la columna 'Aplica Bono' los pedidos que llevan aislación interior (Ej: pedidos de Natanael Aviel confirmados por correo). El bono se calcula a $500 por M2.")
+    df_bono = df_f[['num_pedido', 'obra_codigo', 'quien_envia', 'm2_totales']].copy()
+    df_bono['Aplica Bono'] = False 
                 
-                df_bono = df_f[['num_pedido', 'obra_codigo', 'quien_envia', 'm2_totales']].copy()
-                df_bono['Aplica Bono'] = False 
-                
-                edited_bono = st.data_editor(
+    edited_bono = st.data_editor(
                     df_bono,
                     column_config={
                         "Aplica Bono": st.column_config.CheckboxColumn("Aplica Bono", default=False),
