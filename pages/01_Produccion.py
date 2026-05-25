@@ -1342,7 +1342,7 @@ with tab4:
                     
                 res = []
 
-                # 🔥 TRADUCTOR INTELIGENTE (Evita KeyError mapeando cualquier variación de mayúsculas o espacios)
+                # 🔥 TRADUCTOR INTELIGENTE (Alineado perfectamente con 8 espacios)
     mapeo_columnas = {}
     for col in df_ajustado.columns:
         col_limpia = str(col).strip().lower()
@@ -1351,7 +1351,7 @@ with tab4:
         elif col_limpia in ['obra_codigo', 'obra_cod', 'obra', 'obra código']:
             mapeo_columnas[col] = 'obra_codigo'
         elif col_limpia in ['tipo_edp']:
-            mapeo_columnas[col] = 'TIPO_EDP'  # Forzamos mayúscula para tus filtros internos
+            mapeo_columnas[col] = 'TIPO_EDP'
         elif col_limpia in ['peso_total', 'pesototal']:
             mapeo_columnas[col] = 'peso_total'
         elif col_limpia in ['total_linea', 'totallinea', 'total_línea']:
@@ -1359,7 +1359,6 @@ with tab4:
 
     df_ajustado.rename(columns=mapeo_columnas, inplace=True)
 
-    # Tu bucle groupby (ahora sí, protegido contra todo)
     for (ceco, obra), g in df_ajustado.groupby(['ceco', 'obra_codigo']):
         res.append({
             "CECO": ceco, "OBRA": obra,
@@ -1368,7 +1367,6 @@ with tab4:
             "KG_ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['peso_total'].sum(), 1), "$ ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['total_linea'].sum(), 0)
         })
 
-    # Líneas finales correctamente alineadas fuera del for
     df_edp_final = pd.DataFrame(res)
     totales = pd.DataFrame([{"CECO": "TOTALES", "OBRA": "---", "KG_GALV": df_edp_final["KG_GALV"].sum(), "$ GALV": df_edp_final["$ GALV"].sum(), "KG_FE": df_edp_final["KG_FE"].sum(), "$ FE": df_edp_final["$ FE"].sum(), "KG_ESP": df_edp_final["KG_ESP"].sum(), "$ ESP": df_edp_final["$ ESP"].sum()}])
     df_edp_final = pd.concat([df_edp_final, totales], ignore_index=True)
