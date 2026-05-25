@@ -1339,37 +1339,37 @@ with tab4:
                     df_p.loc[~mask_un, 'peso_total'] *= factor
                     df_p.loc[~mask_un, 'total_linea'] *= factor
                     df_ajustado = pd.concat([df_ajustado, df_p])
-                    
-                res = []
+        
+                    res = []
 
-    # 🔥 TRADUCTOR INTELIGENTE (Alineado perfectamente a 4 espacios)
-    mapeo_columnas = {}
-    for col in df_ajustado.columns:
-        col_limpia = str(col).strip().lower()
-        if col_limpia == 'ceco':
-            mapeo_columnas[col] = 'ceco'
-        elif col_limpia in ['obra_codigo', 'obra_cod', 'obra', 'obra código']:
-            mapeo_columnas[col] = 'obra_codigo'
-        elif col_limpia in ['tipo_edp']:
-            mapeo_columnas[col] = 'TIPO_EDP'
-        elif col_limpia in ['peso_total', 'pesototal']:
-            mapeo_columnas[col] = 'peso_total'
-        elif col_limpia in ['total_linea', 'totallinea', 'total_línea']:
-            mapeo_columnas[col] = 'total_linea'
+                    # 🔥 TRADUCTOR INTELIGENTE (Alineado perfectamente a 4 espacios)
+                    mapeo_columnas = {}
+                    for col in df_ajustado.columns:
+                        col_limpia = str(col).strip().lower()
+                        if col_limpia == 'ceco':
+                            mapeo_columnas[col] = 'ceco'
+                        elif col_limpia in ['obra_codigo', 'obra_cod', 'obra', 'obra código']:
+                            mapeo_columnas[col] = 'obra_codigo'
+                        elif col_limpia in ['tipo_edp']:
+                            mapeo_columnas[col] = 'TIPO_EDP'
+                        elif col_limpia in ['peso_total', 'pesototal']:
+                            mapeo_columnas[col] = 'peso_total'
+                        elif col_limpia in ['total_linea', 'totallinea', 'total_línea']:
+                            mapeo_columnas[col] = 'total_linea'
 
-    df_ajustado.rename(columns=mapeo_columnas, inplace=True)
+                    df_ajustado.rename(columns=mapeo_columnas, inplace=True)
 
-    for (ceco, obra), g in df_ajustado.groupby(['ceco', 'obra_codigo']):
-        res.append({
-            "CECO": ceco, "OBRA": obra,
-            "KG_GALV": round(g[g['TIPO_EDP']=='GALV']['peso_total'].sum(), 1), "$ GALV": round(g[g['TIPO_EDP']=='GALV']['total_linea'].sum(), 0),
-            "KG_FE": round(g[g['TIPO_EDP']=='FE']['peso_total'].sum(), 1), "$ FE": round(g[g['TIPO_EDP']=='FE']['total_linea'].sum(), 0),
-            "KG_ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['peso_total'].sum(), 1), "$ ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['total_linea'].sum(), 0)
-        })
+                    for (ceco, obra), g in df_ajustado.groupby(['ceco', 'obra_codigo']):
+                        res.append({
+                            "CECO": ceco, "OBRA": obra,
+                            "KG_GALV": round(g[g['TIPO_EDP']=='GALV']['peso_total'].sum(), 1), "$ GALV": round(g[g['TIPO_EDP']=='GALV']['total_linea'].sum(), 0),
+                            "KG_FE": round(g[g['TIPO_EDP']=='FE']['peso_total'].sum(), 1), "$ FE": round(g[g['TIPO_EDP']=='FE']['total_linea'].sum(), 0),
+                            "KG_ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['peso_total'].sum(), 1), "$ ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['total_linea'].sum(), 0)
+                        })
 
-    df_edp_final = pd.DataFrame(res)
-    totales = pd.DataFrame([{"CECO": "TOTALES", "OBRA": "---", "KG_GALV": df_edp_final["KG_GALV"].sum(), "$ GALV": df_edp_final["$ GALV"].sum(), "KG_FE": df_edp_final["KG_FE"].sum(), "$ FE": df_edp_final["$ FE"].sum(), "KG_ESP": df_edp_final["KG_ESP"].sum(), "$ ESP": df_edp_final["$ ESP"].sum()}])
-    df_edp_final = pd.concat([df_edp_final, totales], ignore_index=True)
+                    df_edp_final = pd.DataFrame(res)
+                    totales = pd.DataFrame([{"CECO": "TOTALES", "OBRA": "---", "KG_GALV": df_edp_final["KG_GALV"].sum(), "$ GALV": df_edp_final["$ GALV"].sum(), "KG_FE": df_edp_final["KG_FE"].sum(), "$ FE": df_edp_final["$ FE"].sum(), "KG_ESP": df_edp_final["KG_ESP"].sum(), "$ ESP": df_edp_final["$ ESP"].sum()}])
+                    df_edp_final = pd.concat([df_edp_final, totales], ignore_index=True)
                 
     st.divider()
     st.write("### Tabla de Datos (Selecciona y copia directamente)")
@@ -1398,17 +1398,17 @@ with tab4:
                     key="editor_bono_aislacion"
                 )
                 
-                m2_seleccionados = edited_bono[edited_bono['Aplica Bono'] == True]['m2_totales'].sum()
-                monto_bono_aislacion = m2_seleccionados * 500
+    m2_seleccionados = edited_bono[edited_bono['Aplica Bono'] == True]['m2_totales'].sum()
+    monto_bono_aislacion = m2_seleccionados * 500
                 
-                if m2_seleccionados > 0:
+    if m2_seleccionados > 0:
                     st.success(f"**Total M2 con Aislación Seleccionados:** {m2_seleccionados:,.2f} M2")
                     st.markdown(f"#### 💰 Bono Total Aislación (a repartir): $ {monto_bono_aislacion:,.0f}")
-                else:
+    else:
                     st.caption("No hay M2 seleccionados. Marque la casilla correspondiente para calcular el monto.")
 
-        else:
-            st.warning("No se encontraron pedidos con los filtros seleccionados.")
+                    else:
+                    st.warning("No se encontraron pedidos con los filtros seleccionados.")
 
 with tab5:
     st.header("📈 Dashboard de Producción")
