@@ -1342,7 +1342,7 @@ with tab4:
                     
                 res = []
 
-                # 🔥 TRADUCTOR INTELIGENTE (Alineado perfectamente con 8 espacios)
+    # 🔥 TRADUCTOR INTELIGENTE (Alineado perfectamente a 4 espacios)
     mapeo_columnas = {}
     for col in df_ajustado.columns:
         col_limpia = str(col).strip().lower()
