@@ -1341,13 +1341,18 @@ with tab4:
                     df_ajustado = pd.concat([df_ajustado, df_p])
                     
                 res = []
+
+                # 🔥 LIMPIEZA DE SEGURIDAD BLINDADA (Quita espacios y asegura ceco/obra_codigo sin romper mayúsculas)
+                df_ajustado.columns = [str(c).strip() for c in df_ajustado.columns]
+                df_ajustado.rename(columns={'CECO': 'ceco', 'OBRA_CODIGO': 'obra_codigo'}, inplace=True)
+
                 for (ceco, obra), g in df_ajustado.groupby(['ceco', 'obra_codigo']):
-                    res.append({
-                        "CECO": ceco, "OBRA": obra,
-                        "KG GALV": round(g[g['TIPO_EDP']=='GALV']['peso_total'].sum(), 1), "$ GALV": round(g[g['TIPO_EDP']=='GALV']['total_linea'].sum(), 0),
-                        "KG FE": round(g[g['TIPO_EDP']=='FE']['peso_total'].sum(), 1), "$ FE": round(g[g['TIPO_EDP']=='FE']['total_linea'].sum(), 0),
-                        "KG ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['peso_total'].sum(), 1), "$ ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['total_linea'].sum(), 0)
-                    })
+                        res.append({
+                            "CECO": ceco, "OBRA": obra,
+                            "KG_GALV": round(g[g['TIPO_EDP']=='GALV']['peso_total'].sum(), 1), "$ GALV": round(g[g['TIPO_EDP']=='GALV']['total_linea'].sum(), 0),
+                            "KG_FE": round(g[g['TIPO_EDP']=='FE']['peso_total'].sum(), 1), "$ FE": round(g[g['TIPO_EDP']=='FE']['total_linea'].sum(), 0),
+                            "KG_ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['peso_total'].sum(), 1), "$ ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['total_linea'].sum(), 0)
+                        })
                 
                 df_edp_final = pd.DataFrame(res)
                 totales = pd.DataFrame([{"CECO": "TOTALES", "OBRA": "---", "KG GALV": df_edp_final["KG GALV"].sum(), "$ GALV": df_edp_final["$ GALV"].sum(), "KG FE": df_edp_final["KG FE"].sum(), "$ FE": df_edp_final["$ FE"].sum(), "KG ESP": df_edp_final["KG ESP"].sum(), "$ ESP": df_edp_final["$ ESP"].sum()}])
