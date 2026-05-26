@@ -14,6 +14,8 @@ import io
 import matplotlib.patches as patches
 import psycopg2
 import re
+from principal import generar_pdf_cliente
+
 
 # --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.4 - SOPORTE LASTROWID PARA EXCEL) ---
 class SQLiteToPostgresCursor:
@@ -572,121 +574,60 @@ with tab1:
                     
                     c5, c6 = st.columns(2)
                     with c5: quien = st.text_input("Solicitante", value=enc['envia'])
-                    with c6: fuente = st.text_input("Fuente / Etiqueta", value="General")
+                    with c6: fuente = st.text_input("Fuente / Etiqueta", value="Carga Masiva")
                     
                     edited_df = st.data_editor(df_det, use_container_width=True, num_rows="dynamic")
                     neto = edited_df['total_linea'].sum(); peso = edited_df['peso_total'].sum()
                     st.markdown(f"### 💰 Neto: $ {neto:,.0f} | ⚖️ Peso: {peso:,.1f} Kg")
                     
-                    # 🔥 AHORA EL BOTÓN ESTÁ PROTEGIDO AQUÍ ADENTRO 🔥
-                    if st.button("📥 Guardar Pedido (Excel)", type="primary"):
+                    if st.button("📥 Guardar Pedido (Excel)", type="primary", key="btn_guardar_excel_definitivo"):
+                        conn = get_connection()
+                        c = conn.cursor()
                         
-                        numero_oficial = obtener_siguiente_correlativo_obra(obra_input, enc['tf'])
-                        nombre_seguro = str(numero_oficial).replace("/", "-").replace("\\", "-")
+                        # 🔮 Cálculo seguro del correlativo autoincremental por Obra
+                        c.execute("SELECT COALESCE(MAX(CAST(num_pedido AS INTEGER)), 0) + 1 FROM pedidos WHERE obra_codigo = %s", (str(obra_input).strip(),))
+                        numero_oficial = c.fetchone()[0]
+                        
+                        nombre_seguro = f"OT-{numero_oficial}"
                         fecha_str = datetime.now().strftime("%Y%m%d_%H%M%S")
                         ruta_guardado = os.path.join(CARPETA_EXCELS, f"Pedido_Local_{nombre_seguro}_{fecha_str}.xlsx")
                         
                         with open(ruta_guardado, "wb") as f:
                             f.write(arch_ped.getvalue())
                             
-                        # 🔥 MOTOR EXTRACTOR NATIVO: Lee el Excel tal como lo hace un supervisor
-                        diccionario_detalles = {}
-                        try:
-                            df_raw = pd.read_excel(ruta_guardado, sheet_name=0, header=None)
-                            start_row = 28
-                            for i, row_xls in df_raw.iterrows():
-                                if str(row_xls[0]).strip().upper() == "Nº" and str(row_xls[5]).strip().upper() == "DESCRIPCION":
-                                    start_row = i + 1
-                                    break
-                                    
-                            for i in range(start_row, len(df_raw)):
-                                row_xls = df_raw.iloc[i]
-                                item_id = row_xls[0]
-                                if pd.isna(item_id) or str(item_id).strip() == "": continue
-                                try: item_num = int(item_id)
-                                except: continue
-                                    
-                                tipo_pieza = str(row_xls[5]).strip().lower()
-                                
-                                # Columnas exactas de la planilla Termofrio: J(9), K(10), S(18), AA(26), AC(28)...
-                                val_a, val_b, val_sim = row_xls[9], row_xls[10], row_xls[13]
-                                val_c, val_d, val_h = row_xls[16], row_xls[17], row_xls[18]
-                                val_ang, val_casq = row_xls[21], row_xls[22]
-                                val_ue, val_us = row_xls[26], row_xls[28]
-                                
-                                dims_str = []
-                                if pd.notna(val_a) and str(val_a).strip(): dims_str.append(f"A:{str(val_a).strip()}cm")
-                                if pd.notna(val_b) and str(val_b).strip(): dims_str.append(f"B:{str(val_b).strip()}cm")
-                                
-                                # Inteligencia de piezas especiales
-                                if "transform" in tipo_pieza or "difusora" in tipo_pieza or "pantalon" in tipo_pieza:
-                                    if pd.notna(val_c) and str(val_c).strip(): dims_str.append(f"C:{str(val_c).strip()}cm")
-                                    if pd.notna(val_d) and str(val_d).strip(): dims_str.append(f"D:{str(val_d).strip()}cm")
-                                elif "pleno" in tipo_pieza:
-                                    if pd.notna(val_c) and str(val_c).strip(): dims_str.append(f"C:{str(val_c).strip()}cm")
-                                    
-                                if pd.notna(val_h) and str(val_h).strip():
-                                    try:
-                                        vh = float(val_h)
-                                        dims_str.append(f"H:{vh}m" if vh < 3.0 else f"H:{vh}cm")
-                                    except:
-                                        dims_str.append(f"H:{str(val_h).strip()}cm")
-                                        
-                                partes_str = []
-                                if dims_str: partes_str.append("Dim: " + " ".join(dims_str))
-                                if pd.notna(val_ang) and str(val_ang).strip(): partes_str.append(f"Ang: {str(val_ang).strip()}°")
-                                if pd.notna(val_casq) and str(val_casq).strip(): partes_str.append(f"Casq: {str(val_casq).strip()}")
-                                
-                                ue = str(val_ue).strip() if pd.notna(val_ue) else ""
-                                us = str(val_us).strip() if pd.notna(val_us) else ""
-                                if ue or us: partes_str.append(f"Unión: {ue} / {us}".strip(" /"))
-                                if pd.notna(val_sim) and str(val_sim).strip(): partes_str.append(f"Simetría: {str(val_sim).strip()}")
-                                
-                                diccionario_detalles[item_num] = " | ".join(partes_str)
-                        except Exception as e:
-                            st.error(f"Error interno leyendo medidas del Excel: {e}")
-
-                        # CONTINÚA EL GUARDADO EN LA DB
-                        conn = get_connection()
-                        c = conn.cursor()
                         flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
                         
-                        query_ped = "INSERT INTO pedidos (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo, nivel_urgencia, ruta_excel, observaciones, men) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id"
+                        query_ped = """INSERT INTO pedidos 
+                        (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo, nivel_urgencia, ruta_excel, observaciones, men) 
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id"""
                         
                         c.execute(query_ped, (
-                            str(numero_oficial).strip(), enc['tf'], str(obra_input).strip(), str(ceco_input).strip(), 
+                            str(numero_oficial), enc['tf'], str(obra_input).strip(), str(ceco_input).strip(), 
                             quien, fuente, datetime.now(), flim.date(), float(neto), float(peso), 
                             0.0, float(m2_input), 'Pendiente', 'En Proceso', 'Normal', ruta_guardado, "", ""
                         ))
                         
+                        # Capturamos el verdadero ID generado por la base de datos
                         pid = c.fetchone()[0]
-                        query_item = "INSERT INTO items_pedido (pedido_id, item_numero, descripcion, detalles, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                        
+                        query_item = """INSERT INTO items_pedido 
+                        (pedido_id, item_numero, descripcion, detalles, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio) 
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
                         
                         for _, r in edited_df.iterrows():
-                            cant_val = int(r['cantidad']) if pd.notnull(r['cantidad']) else 0
-                            peso_val = float(r['peso_total']) if pd.notnull(r['peso_total']) else 0.0
-                            esp_val = float(r['espesor']) if pd.notnull(r['espesor']) else 0.0
-                            pre_val = float(r['precio_unitario']) if pd.notnull(r['precio_unitario']) else 0.0
-                            tot_val = float(r['total_linea']) if pd.notnull(r['total_linea']) else 0.0
-                            
-                            # 🪄 ¡Magia! Asignamos las medidas perfectas extraídas al ítem correspondiente
-                            item_key = -1
-                            try: item_key = int(r['item_num'])
-                            except: pass
-                            
-                            detalles_finales = diccionario_detalles.get(item_key, "")
-                            
                             c.execute(query_item, (
-                                pid, str(r['item_num']).strip(), str(r['descripcion']).strip(), detalles_finales, cant_val,
-                                peso_val, esp_val, str(r['material']).strip(), str(r['unidad_cobro']).strip(),
-                                pre_val, tot_val, str(r['origen_precio']).strip()
+                                pid, str(r['item_num']).strip(), str(r['descripcion']).strip(), "", int(r['cantidad']),
+                                float(r['peso_total']), float(r['espesor']), str(r['material']).strip(), str(r['unidad_cobro']).strip(),
+                                float(r['precio_unitario']), float(r['total_linea']), str(r['origen_precio']).strip()
                             ))
                             
-                        st.success(f"¡Guardado correctamente en DB y Bóveda como el pedido {numero_oficial}!")
+                        conn.commit()
+                        conn.close()
+                        st.success(f"¡Pedido guardado exitosamente como la orden N° {numero_oficial}!")
                         st.rerun()
 
 
-    with t_manual:
+with t_manual:
         if 'carrito_admin' not in st.session_state:
             st.session_state.carrito_admin = []
 
@@ -976,18 +917,96 @@ with tab2:
 
         with col_right:
             st.markdown("##### 🚀 Transformación a PDF")
-            if st.button("📄 Generar PDF (Timbre y Firma)", key="btn_pdf_timbrado", type="primary"):
-                with st.spinner("Transformando Excel a PDF oficial..."):
-                    try:
-                        # AQUÍ LLAMAS A TU FUNCIÓN QUE YA HACE EL TIMBRE Y FIRMA
-                        # Solo asegúrate de pasarle la ruta_ex como fuente
-                        ruta_pdf_final = generar_pdf_timbrado_real(ruta_ex, fila_pedido_ver) 
-                        
-                        if ruta_pdf_ot:
-                            with open(ruta_pdf_final, "rb") as f:
-                                st.download_button("📥 Descargar PDF Final", f, file_name=f"OT_{fila_pedido_ver['num_pedido']}_Final.pdf", key="dl_pdf_final")
-                    except Exception as e:
-                        st.error(f"Error al transformar el archivo: {e}")
+            if st.button("📄 Generar PDF (Timbre y Firma)", key="btn_pdf_timbrado_v3", type="primary"):
+                if not ruta_ex or not os.path.exists(ruta_ex):
+                    st.error("❌ El archivo Excel original no se encuentra físicamente en el servidor para ser procesado.")
+                else:
+                    with st.spinner("Transformando planilla Excel a formato oficial PDF..."):
+                        try:
+                            # 🛡️ 1. Declaración local para eliminar los errores de definición de Pylance
+                            obs_txt = ""
+                            men_txt = ""
+                            
+                            # Extraemos de forma segura los comentarios directo desde la Base de Datos
+                            conn_pdf = get_connection()
+                            id_ver_pdf = str(fila_pedido_ver['id']).strip()
+                            obs_query = pd.read_sql(f"SELECT observaciones, men FROM pedidos WHERE TRIM(CAST(id AS TEXT))='{id_ver_pdf}'", conn_pdf)
+                            conn_pdf.close()
+                            
+                            if not obs_query.empty:
+                                obs_val = obs_query.iloc[0]['observaciones']
+                                obs_txt = str(obs_val).strip() if obs_val is not None and str(obs_val) not in ['None', 'nan'] else ""
+                                if 'men' in obs_query.columns:
+                                    men_val = obs_query.iloc[0]['men']
+                                    men_txt = str(men_val).strip() if men_val is not None and str(men_val) not in ['None', 'nan'] else ""
+
+                            # 2. Leer el Excel nativo saltándose las filas superiores estáticas
+                            df_raw = pd.read_excel(ruta_ex, header=None)
+                            
+                            start_row = 28
+                            for idx, row_vals in df_raw.iterrows():
+                                if str(row_vals[0]).strip().upper() == "Nº" or "DESCRIPCION" in str(row_vals[5]).strip().upper():
+                                    start_row = idx + 1
+                                    break
+                            
+                            # 3. Compilar piezas con el mapeo exacto de columnas de Termofrio
+                            clean_rows = []
+                            for idx in range(start_row, len(df_raw)):
+                                r_val = df_raw.iloc[idx]
+                                item_id = r_val[0]
+                                if pd.isna(item_id) or str(item_id).strip() == "": 
+                                    continue
+                                    
+                                tipo_pieza = str(r_val[5]).strip()
+                                
+                                # Extracción por índices físicos de columnas (F=5, I=8, J=9, K=10, S=18, AA=26, AC=28)
+                                val_a = str(r_val[9]).strip() if pd.notna(r_val[9]) else ""
+                                val_b = str(r_val[10]).strip() if pd.notna(r_val[10]) else ""
+                                val_h = str(r_val[18]).strip() if pd.notna(r_val[18]) else ""
+                                val_ue = str(r_val[26]).strip() if pd.notna(r_val[26]) else ""
+                                val_us = str(r_val[28]).strip() if pd.notna(r_val[28]) else ""
+                                
+                                dims = []
+                                if val_a: dims.append(f"A:{val_a}cm")
+                                if val_b: dims.append(f"B:{val_b}cm")
+                                if val_h: dims.append(f"H:{val_h}")
+                                
+                                parts = []
+                                if dims: parts.append("Dim: " + " ".join(dims))
+                                if val_ue or val_us: parts.append(f"Unión: {val_ue} / {val_us}".strip(" /"))
+                                detalles_finales_str = " | ".join(parts)
+                                
+                                clean_rows.append({
+                                    'item_numero': str(item_id).strip(),
+                                    'descripcion': tipo_pieza,
+                                    'detalles': detalles_finales_str,
+                                    'cantidad': r_val[8] if pd.notna(r_val[8]) else 1,
+                                    'espesor': r_val[31] if pd.notna(r_val[31]) else 0.5,
+                                    'peso_total': r_val[33] if pd.notna(r_val[33]) else 0.0
+                                })
+                                
+                            df_para_pdf = pd.DataFrame(clean_rows)
+                            
+                            # 4. 🚀 Disparar tu generador FPDF con la tabla y las variables ya resueltas
+                            ruta_pdf_final = generar_pdf_cliente(
+                                pedido_num=fila_pedido_ver['num_pedido'],
+                                tf=fila_pedido_ver['tf'],
+                                obra=fila_pedido_ver['obra_codigo'],
+                                ceco=fila_pedido_ver['ceco'],
+                                solicitante=fila_pedido_ver['quien_envia'],
+                                items_df=df_para_pdf, 
+                                kg_est=fila_pedido_ver['kg_estimados'],
+                                observaciones=obs_txt,
+                                men=men_txt
+                            )
+                            
+                            if ruta_pdf_final and os.path.exists(ruta_pdf_final):
+                                with open(ruta_pdf_final, "rb") as f:
+                                    st.download_button("📥 Descargar PDF Terminado (Timbrado)", f, file_name=f"Pedido_Despacho_OT-{fila_pedido_ver['num_pedido']}.pdf", key="dl_pdf_final_perfecto")
+                            else:
+                                st.error("❌ Ocurrió un inconveniente al empaquetar el archivo PDF definitivo.")
+                        except Exception as e:
+                            st.error(f"Error procesando la transformación del documento: {e}")
 
         st.subheader("🚀 Fila de Producción y Urgencias")
         pend_fifo = dfp[dfp['estado']=='Pendiente'].copy()
