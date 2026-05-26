@@ -1433,7 +1433,19 @@ with tab4:
         st.warning("No se encontraron pedidos con los filtros seleccionados.")                        
 with tab5:
     st.header("📈 Dashboard de Producción")
-    conn = get_connection(); df_all_ped = pd.read_sql("SELECT * FROM pedidos", conn); df_all_items = pd.read_sql("SELECT * FROM items_pedido", conn); conn.close()
+    conn = get_connection()
+    df_all_ped = pd.read_sql("SELECT * FROM pedidos", conn)
+    df_all_items = pd.read_sql("SELECT * FROM items_pedido", conn)
+    conn.close()
+
+    # 🔥 ESCUDO DE LIMPIEZA CONTRA ESPACIOS OCULTOS EN LA NUBE
+    df_all_ped.columns = [str(c).lower().strip() for c in df_all_ped.columns]
+    df_all_items.columns = [str(c).lower().strip() for c in df_all_items.columns]
+
+    if 'num_pedido' in df_all_ped.columns:
+        df_all_ped['num_pedido'] = df_all_ped['num_pedido'].astype(str).str.strip().str.upper()
+    if 'num_pedido' in df_all_items.columns:
+        df_all_items['num_pedido'] = df_all_items['num_pedido'].astype(str).str.strip().str.upper()
     if not df_all_ped.empty:
         c1, c2, c3 = st.columns(3)
         c1.metric("Total Pedidos", len(df_all_ped))

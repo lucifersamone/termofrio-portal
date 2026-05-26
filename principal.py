@@ -1178,8 +1178,16 @@ with tabs_admin[0]:
         conn_p = get_connection()
         df_ped = pd.read_sql("SELECT * FROM pedidos WHERE estado='Terminado'", conn_p)
         df_items = pd.read_sql("SELECT * FROM items_pedido", conn_p)
+        
+        # 🔥 ESCUDO DE LIMPIEZA CONTRA ESPACIOS OCULTOS
+        df_ped.columns = [str(c).lower().strip() for c in df_ped.columns]
+        df_items.columns = [str(c).lower().strip() for c in df_items.columns]
+
+        if 'num_pedido' in df_ped.columns:
+            df_ped['num_pedido'] = df_ped['num_pedido'].astype(str).str.strip().str.upper()
         if 'num_pedido' in df_items.columns:
-            df_items['num_pedido'] = df_items['num_pedido'].astype(str).str.strip()
+            df_items['num_pedido'] = df_items['num_pedido'].astype(str).str.strip().str.upper()
+            
         conn_p.close()
         
         if not df_ped.empty:
