@@ -587,21 +587,55 @@ with tab1:
                     
                     with open(ruta_guardado, "wb") as f:
                         f.write(arch_ped.getvalue())
+        conn = get_connection()
+        c = conn.cursor()
+        flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
+        
+        # 🛡️ Forzamos la sintaxis nativa con RETURNING id para asegurar el enlace
+        c.execute("""
+            INSERT INTO pedidos (
+                num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, 
+                fecha_recepcion, fecha_limite, total_neto_estimado, 
+                kg_estimados, kg_reales, m2_totales, estado, estado_plazo, 
+                nivel_urgencia, ruta_guardado, observaciones, men
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+            RETURNING id
+        """, (
+            str(numero_oficial).strip(), enc['tf'], str(obra_input).strip(), str(ceco_input).strip(), 
+            quien, fuente, datetime.now(), flim.date(), float(neto), float(peso), 
+            0.0, float(m2_input), 'Pendiente', 'En Proceso', 'Normal', ruta_guardado, "", ""
+        ))
+        
+        # Capturamos el ID real generado por la base de datos de forma directa
+        pid = c.fetchone()[0]
+        
+        # Insertamos las piezas limpiando los tipos de datos de Excel (Numpy) para Postgres
+        for _, r in edited_df.iterrows():
+            cant_val = int(r['cantidad']) if pd.notnull(r['cantidad']) else 0
+            peso_val = float(r['peso_total']) if pd.notnull(r['peso_total']) else 0.0
+            esp_val = float(r['espesor']) if pd.notnull(r['espesor']) else 0.0
+            pre_val = float(r['precio_unitario']) if pd.notnull(r['precio_unitario']) else 0.0
+            tot_val = float(r['total_linea']) if pd.notnull(r['total_linea']) else 0.0
+            
+            c.execute("""
+                INSERT INTO items_pedido (
+                    pedido_id, item_numero, descripcion, cantidad, 
+                    peso_total, espesor, material, unidad_cobro, 
+                    precio_unitario, total_linea, origen_precio
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                pid, str(r['item_num']).strip(), str(r['descripcion']).strip(), cant_val,
+                peso_val, esp_val, str(r['material']).strip(), str(r['unidad_cobro']).strip(),
+                pre_val, tot_val, str(r['origen_precio']).strip()
+            ))
+            
+        st.success(f"¡Guardado correctamente en DB y Bóveda como el pedido {numero_oficial}!")
+        st.rerun()
+        st.success(f"✅ ¡Guardado correctamente en DB y Bóveda como el pedido {numero_oficial}!"); st.rerun()
 
-                    conn = get_connection(); c = conn.cursor()
-                    flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
-                    c.execute("INSERT INTO pedidos (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo, nivel_urgencia, ruta_excel, observaciones, men) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
-                             (numero_oficial, enc['tf'], obra_input, ceco_input, quien, fuente, datetime.now(), flim.date(), neto, peso, 0, m2_input, 'Pendiente', 'En Proceso', 'Normal', ruta_guardado, "", ""))
-                    pid = c.lastrowid
-                    for _,r in edited_df.iterrows():
-                        c.execute("INSERT INTO items_pedido (pedido_id, item_numero, descripcion, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio) VALUES (?,?,?,?,?,?,?,?,?,?,?)", 
-                                 (pid, r['item_num'], r['descripcion'], r['cantidad'], r['peso_total'], r['espesor'], r['material'], r['unidad_cobro'], r['precio_unitario'], r['total_linea'], r['origen_precio']))
-                    conn.commit(); conn.close()
-                    st.success(f"✅ ¡Guardado correctamente en DB y Bóveda como el pedido {numero_oficial}!"); st.rerun()
-
-    with t_manual:
-        if 'carrito_admin' not in st.session_state:
-            st.session_state.carrito_admin = []
+        with t_manual:
+            if 'carrito_admin' not in st.session_state:
+                st.session_state.carrito_admin = []
 
         st.info("Formulario Inteligente: Selecciona la pieza y el sistema solo te pedirá las dimensiones necesarias.")
         
@@ -872,13 +906,10 @@ with tab2:
         st.caption("Selecciona un pedido para ver exactamente qué piezas y medidas trae antes de fabricar.")
         col_b1, col_b2 = st.columns([1, 2])
         
-            # 🔥 LIMPIEZA DE EMERGENCIA PARA EVITAR ESPACIOS OCULTOS EN EL SELECTBOX
-        if 'num_pedido' in dfp.columns:
-            dfp['num_pedido'] = dfp['num_pedido'].astype(str).str.strip().str.upper()
-        if 'obra_codigo' in dfp.columns:
-            dfp['obra_codigo'] = dfp['obra_codigo'].astype(str).str.strip()
-        if 'id' in dfp.columns:
-            dfp['id'] = dfp['id'].astype(str).str.strip()
+        # Limpieza preventiva de textos para el selector
+        for c in ['num_pedido', 'obra_codigo', 'id']:
+            if c in dfp.columns:
+                dfp[c] = dfp[c].astype(str).str.strip()
 
         with col_b1:
             pedido_a_ver = st.selectbox("Seleccionar Pedido:", dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'], key="ver_detalles_ped")
@@ -889,25 +920,57 @@ with tab2:
         with col_b2:
             st.markdown("<br>", unsafe_allow_html=True)
             conn_ver = get_connection()
-            
-            # 🛡️ DOBLE ESCUDO CON TRIM: Busca por ID o por Texto de Pedido eliminando cualquier espacio oculto de Postgres
+            # Escudo de triple verificación: Busca por ID numérico o por código de texto eliminando espacios de la nube
             df_items_raw = pd.read_sql(f"SELECT * FROM items_pedido WHERE TRIM(CAST(pedido_id AS TEXT))='{id_ver}' OR TRIM(CAST(pedido_id AS TEXT))='{num_ped_ver}'", conn_ver)
-            
             obs_query = pd.read_sql(f"SELECT observaciones, men FROM pedidos WHERE TRIM(CAST(id AS TEXT))='{id_ver}'", conn_ver)
             
-            # Guardamos de forma segura convirtiendo a texto y limpiando los nulos de la nube
             obs_val = obs_query.iloc[0]['observaciones'] if not obs_query.empty else ""
-            obs_txt = str(obs_val).strip() if obs_val is not None and str(obs_val) != 'None' and str(obs_val) != 'nan' else ""
-            
+            obs_txt = str(obs_val).strip() if obs_val is not None and str(obs_val) not in ['None', 'nan'] else ""
             men_val = obs_query.iloc[0]['men'] if not obs_query.empty and 'men' in obs_query.columns else ""
-            men_txt = str(men_val).strip() if men_val is not None and str(men_val) != 'None' and str(men_val) != 'nan' else ""
-            
+            men_txt = str(men_val).strip() if men_val is not None and str(men_val) not in ['None', 'nan'] else ""
             conn_ver.close()
 
         if not df_items_raw.empty:
             df_items_display = df_items_raw[['item_numero', 'descripcion', 'detalles', 'cantidad', 'espesor', 'peso_total']].rename(columns={
                 'item_numero': 'Ítem', 'descripcion': 'Pieza', 'detalles': 'Medidas y Especificaciones', 'cantidad': 'Cant.', 'espesor': 'Espesor (mm)', 'peso_total': 'Peso (Kg)'
             })
+            st.dataframe(df_items_display, use_container_width=True, hide_index=True)
+            
+            st.download_button(
+                label=f"📥 Descargar Comprobante de Fabricación ({num_ped_ver})",
+                data=df_items_display.to_csv(index=False).encode('utf-8-sig'),
+                file_name=f"Comprobante_Fabricacion_{num_ped_ver}.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("No hay piezas detalladas en la base de datos para este pedido.")
+            
+            # Ficha de contingencia para que el taller NUNCA se detenga si es un pedido previo al parche
+            df_contingencia = pd.DataFrame([{
+                "Pedido": num_ped_ver,
+                "Obra": fila_pedido_ver['obra_codigo'],
+                "Detalle": "Encabezado General de Fabricación (Revisar planilla Excel original)",
+                "Kg Estimados": fila_pedido_ver.get('kg_estimados', 'Ver Excel')
+            }])
+            st.download_button(
+                label="📥 Descargar Ficha de Fabricación Básica",
+                data=df_contingencia.to_csv(index=False).encode('utf-8-sig'),
+                file_name=f"Ficha_Fabricacion_Base_{num_ped_ver}.csv",
+                mime="text/csv"
+            )
+
+        # --- Alertas Visuales ---
+        alertas_ui = []
+        if "Aislación" in str(fila_pedido_ver.get('fuente', '')): alertas_ui.append("🧊 AISLACIÓN INTERIOR")
+        if "Forro Metálico" in str(fila_pedido_ver.get('fuente', '')): alertas_ui.append("🛡️ FORRO METÁLICO")
+
+        if alertas_ui or men_txt or obs_txt:
+            msj = ""
+            if alertas_ui: msj += f"**⚠️ ATENCIÓN:** Este pedido incluye **{', '.join(alertas_ui)}**\n\n"
+            if men_txt: msj += f"**👤 MEN:** {men_txt} \n"
+            if obs_txt: msj += f"**📝 Comentarios:** {obs_txt}"
+            st.warning(msj)
+
             st.dataframe(df_items_display, use_container_width=True, hide_index=True)
             
             # 📄 SOLUCIÓN EN RUTA: Botón directo para que descargues las medidas del taller apenas se sube el Excel
