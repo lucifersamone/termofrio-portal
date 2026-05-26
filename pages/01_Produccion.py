@@ -954,87 +954,40 @@ with tab2:
         
         # --- VISOR DE DETALLES Y MEDIDAS EN PANTALLA ---
         st.markdown("---")
-        st.markdown("#### 🔍 Ver Detalle y Medidas de un Pedido")
-        st.caption("Selecciona un pedido para revisar sus especificaciones o generar el PDF oficial de taller.")
-        col_b1, col_b2 = st.columns([1, 2])
+        st.markdown("#### 🔍 Gestión de Documento Maestro")
         
-        for c in ['num_pedido', 'obra_codigo', 'id']:
-            if c in dfp.columns:
-                dfp[c] = dfp[c].astype(str).str.strip()
-
-        with col_b1:
-            pedido_a_ver = st.selectbox("Seleccionar Pedido:", dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'], key="ver_detalles_ped_final")
-            fila_pedido_ver = dfp[dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'] == pedido_a_ver].iloc[0]
-            id_ver = str(fila_pedido_ver['id']).strip()
-            num_ped_ver = str(fila_pedido_ver['num_pedido']).strip()
-            fuente_pedido = str(fila_pedido_ver.get('fuente', '')).strip().lower()
-
-        with col_b2:
-            st.markdown("<br>", unsafe_allow_html=True)
-            conn_ver = get_connection()
-            df_items_raw = pd.read_sql(f"SELECT * FROM items_pedido WHERE TRIM(CAST(pedido_id AS TEXT))='{id_ver}' OR TRIM(CAST(pedido_id AS TEXT))='{num_ped_ver}'", conn_ver)
-            obs_query = pd.read_sql(f"SELECT observaciones, men FROM pedidos WHERE TRIM(CAST(id AS TEXT))='{id_ver}'", conn_ver)
-            
-            obs_val = obs_query.iloc[0]['observaciones'] if not obs_query.empty else ""
-            obs_txt = str(obs_val).strip() if obs_val is not None and str(obs_val) not in ['None', 'nan'] else ""
-            men_val = obs_query.iloc[0]['men'] if not obs_query.empty and 'men' in obs_query.columns else ""
-            men_txt = str(men_val).strip() if men_val is not None and str(men_val) not in ['None', 'nan'] else ""
-            conn_ver.close()
-
-        # --- Alertas Visuales (MEN y Comentarios) ---
-        alertas_ui = []
-        if "Aislación" in str(fila_pedido_ver.get('fuente', '')): alertas_ui.append("🧊 AISLACIÓN INTERIOR")
-        if "Forro Metálico" in str(fila_pedido_ver.get('fuente', '')): alertas_ui.append("🛡️ FORRO METÁLICO")
-
-        if alertas_ui or men_txt or obs_txt:
-            msj = ""
-            if alertas_ui: msj += f"**⚠️ ATENCIÓN:** Este pedido incluye **{', '.join(alertas_ui)}**\n\n"
-            if men_txt: msj += f"**👤 MEN:** {men_txt} \n"
-            if obs_txt: msj += f"**📝 Comentarios:** {obs_txt}"
-            st.warning(msj)
-
-        # 🎯 VISOR UNIFICADO: Tabla en pantalla y botón único de PDF
-        st.markdown("##### 🖨️ Documento Oficial para Taller (Impresión)")
+        # Selección del pedido
+        pedido_a_ver = st.selectbox("Seleccionar Pedido:", dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'], key="ver_detalles_v2")
+        fila_pedido_ver = dfp[dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'] == pedido_a_ver].iloc[0]
         
+        # Recuperamos la ruta guardada en la BD
         ruta_ex = str(fila_pedido_ver.get('ruta_excel', '')).strip()
-        es_masiva = ruta_ex.endswith(('.xlsx', '.xls', '.xlsm')) or "excel" in fuente_pedido or "masiva" in fuente_pedido
-        
-        if es_masiva:
-            st.info("📦 **Pedido subido en Excel (Carga Masiva):** Las piezas han sido transformadas automáticamente al formato de taller.")
-        else:
-            st.success("📝 **Pedido por Carga Manual:** Digitado directamente en plataforma.")
+        if ruta_ex in ['None', 'nan', '']: ruta_ex = None
 
-        if not df_items_raw.empty:
-            df_items_display = df_items_raw[['item_numero', 'descripcion', 'detalles', 'cantidad', 'espesor', 'peso_total']].rename(columns={
-                'item_numero': 'Ítem', 'descripcion': 'Pieza', 'detalles': 'Medidas y Especificaciones', 'cantidad': 'Cant.', 'espesor': 'Espesor (mm)', 'peso_total': 'Peso (Kg)'
-            })
-            st.dataframe(df_items_display, use_container_width=True, hide_index=True)
-            
-            if st.button("📄 Generar Orden de Trabajo Unificada (PDF)", key="btn_ot_interna_unificada", type="primary"):
-                with st.spinner("Generando documento PDF oficial con medidas..."):
+        col_left, col_right = st.columns(2)
+        
+        with col_left:
+            st.markdown("##### 📄 Comprobante Original")
+            if ruta_ex and os.path.exists(ruta_ex):
+                with open(ruta_ex, "rb") as f:
+                    st.download_button("📥 Descargar Excel Original", f, file_name=os.path.basename(ruta_ex), key="dl_excel_orig")
+            else:
+                st.warning("⚠️ El archivo Excel original no está disponible en el servidor.")
+
+        with col_right:
+            st.markdown("##### 🚀 Transformación a PDF")
+            if st.button("📄 Generar PDF (Timbre y Firma)", key="btn_pdf_timbrado", type="primary"):
+                with st.spinner("Transformando Excel a PDF oficial..."):
                     try:
-                        ruta_pdf_ot = generar_pdf_manual(
-                            pedido_num=fila_pedido_ver['num_pedido'],
-                            tf=fila_pedido_ver['tf'],
-                            obra=fila_pedido_ver['obra_codigo'],
-                            ceco=fila_pedido_ver['ceco'],
-                            solicitante=fila_pedido_ver['quien_envia'],
-                            items_df=df_items_raw, 
-                            kg_reales=0, 
-                            fuente=fila_pedido_ver['fuente'],
-                            observaciones=obs_txt,
-                            tipo="interna",
-                            men=men_txt
-                        )
+                        # AQUÍ LLAMAS A TU FUNCIÓN QUE YA HACE EL TIMBRE Y FIRMA
+                        # Solo asegúrate de pasarle la ruta_ex como fuente
+                        ruta_pdf_final = generar_pdf_timbrado_real(ruta_ex, fila_pedido_ver) 
+                        
                         if ruta_pdf_ot:
-                            with open(ruta_pdf_ot, "rb") as f:
-                                st.download_button("📥 Descargar PDF Orden de Trabajo", f, file_name=f"Orden_Trabajo_{fila_pedido_ver['num_pedido']}.pdf", key="btn_descarga_pdf_final_ok")
+                            with open(ruta_pdf_final, "rb") as f:
+                                st.download_button("📥 Descargar PDF Final", f, file_name=f"OT_{fila_pedido_ver['num_pedido']}_Final.pdf", key="dl_pdf_final")
                     except Exception as e:
-                        st.error(f"Error al generar PDF: {e}")
-        else:
-            st.error("⚠️ Este pedido está vacío. Se guardó sin agregar piezas válidas al carrito.")
-            
-        st.divider()
+                        st.error(f"Error al transformar el archivo: {e}")
 
         st.subheader("🚀 Fila de Producción y Urgencias")
         pend_fifo = dfp[dfp['estado']=='Pendiente'].copy()

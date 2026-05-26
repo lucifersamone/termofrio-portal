@@ -606,19 +606,27 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
         pdf.set_font("Arial", "", 9)
         for _, row in items_df.iterrows():
             try: kg_str = f"{float(row.get('peso_total', 0)):.2f}"
-            except: kg_str = str(row.get('peso_total', ''))
+            except: kg_str = str(row.get('peso_total', '0'))
             
             try: esp_str = f"{float(row.get('espesor', 0)):.1f}"
-            except: esp_str = str(row.get('espesor', ''))
+            except: esp_str = str(row.get('espesor', '0'))
 
             itm = str(row.get('item_numero', row.get('item_num', '')))
             dsc = str(row.get('descripcion', row.get('Descripción', '')))
-            det = str(row.get('detalles', row.get('Detalles/Medidas', ''))).replace('nan', '')
+            
+            # --- CORRECCIÓN AQUÍ: Limpieza total de nulos ---
+            val_det = row.get('detalles', row.get('Detalles/Medidas', ''))
+            if val_det is None or pd.isna(val_det) or str(val_det).lower() in ['none', 'nan']:
+                det = ""
+            else:
+                det = str(val_det).strip()
+            # ------------------------------------------------
+            
             cnt = str(row.get('cantidad', row.get('Cantidad', '')))
 
             pdf.cell(15, 6, limpiar_texto(itm), border=1, align="C")
             pdf.cell(65, 6, limpiar_texto(dsc)[:35], border=1) 
-            pdf.cell(140, 6, limpiar_texto(det)[:85], border=1)
+            pdf.cell(140, 6, limpiar_texto(det)[:85], border=1) # Ahora 'det' nunca será "None"
             pdf.cell(15, 6, limpiar_texto(cnt), border=1, align="C")
             pdf.cell(20, 6, limpiar_texto(esp_str), border=1, align="C")
             pdf.cell(20, 6, limpiar_texto(kg_str), border=1, align="C", ln=True)
