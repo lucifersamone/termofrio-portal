@@ -924,7 +924,14 @@ with t_manual:
 
                     conn = get_connection(); c = conn.cursor()
                     
-                    c.execute("INSERT OR REPLACE INTO directorio_solicitantes (nombre, correo) VALUES (?, ?)", (quien_manual.strip(), correo_manual.strip()))
+                    # 🔥 CORRECCIÓN: Sintaxis nativa de PostgreSQL para "Insert or Replace"
+                    query_solicitante = """
+                    INSERT INTO directorio_solicitantes (nombre, correo) 
+                    VALUES (%s, %s) 
+                    ON CONFLICT (nombre) 
+                    DO UPDATE SET correo = EXCLUDED.correo
+                    """
+                    c.execute(query_solicitante, (quien_manual.strip(), correo_manual.strip()))
 
                     flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
                     fuente_guardado = "Generado Manualmente Taller"
