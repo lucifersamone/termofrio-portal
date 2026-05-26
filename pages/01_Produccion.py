@@ -14,7 +14,7 @@ import io
 import matplotlib.patches as patches
 import psycopg2
 import re
-from principal import generar_pdf_cliente
+
 
 
 # --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.4 - SOPORTE LASTROWID PARA EXCEL) ---
@@ -90,6 +90,74 @@ def limpiar_texto(text):
     mapping = {"–": "-", "—": "-", "…": "...", "“": '"', "”": '"', "‘": "'", "’": "'"}
     for char, replacement in mapping.items(): text = text.replace(char, replacement)
     return text.encode("latin-1", "replace").decode("latin-1")
+
+def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_est, observaciones="", men=""):
+    """Generador de PDF para Clientes - 100% Nativo en Python, compatible con la Nube."""
+    try:
+        clean_id = str(pedido_num).replace("/", "-").replace("\\", "-").strip()
+        temp_dir = tempfile.gettempdir()
+        ruta_pdf = os.path.join(temp_dir, f"Comprobante_{clean_id}.pdf")
+
+        # Configuración del documento en Horizontal (Landscape) para calzar las columnas de taller
+        pdf = FPDF(orientation='L', unit='mm', format='A4')
+        pdf.add_page()
+        
+        # Encabezado Oficial Termofrio
+        pdf.set_font("Arial", "B", 14)
+        pdf.cell(0, 10, limpiar_texto("ORDEN DE FABRICACIÓN Y DESPACHO - TERMOFRIO"), ln=True, align="C")
+        pdf.set_font("Arial", "", 10)
+        pdf.cell(0, 8, limpiar_texto(f"Pedido: {pedido_num} | Obra: {obra} | TF: {tf} | CECO: {ceco}"), ln=True, align="C")
+        pdf.cell(0, 8, limpiar_texto(f"Solicitante: {solicitante}"), ln=True, align="C")
+        pdf.ln(5)
+
+        # Dibujar Encabezados de la Tabla
+        pdf.set_font("Arial", "B", 9)
+        pdf.cell(15, 6, "Item", border=1, align="C")
+        pdf.cell(65, 6, "Descripcion", border=1)
+        pdf.cell(140, 6, "Medidas y Especificaciones", border=1)
+        pdf.cell(15, 6, "Cant.", border=1, align="C")
+        pdf.cell(20, 6, "Esp(mm)", border=1, align="C")
+        pdf.cell(20, 6, "Kg", border=1, align="C", ln=True)
+
+        # Rellenar filas de piezas desde el DataFrame
+        pdf.set_font("Arial", "", 9)
+        for _, row in items_df.iterrows():
+            try: kg_str = f"{float(row.get('peso_total', 0)):.2f}"
+            except: kg_str = str(row.get('peso_total', '0'))
+            
+            try: esp_str = f"{float(row.get('espesor', 0)):.1f}"
+            except: esp_str = str(row.get('espesor', '0'))
+
+            itm = str(row.get('item_numero', row.get('item_num', '')))
+            dsc = str(row.get('descripcion', row.get('Descripción', '')))
+            
+            # Limpieza profunda de strings nulos de la Base de Datos
+            val_det = row.get('detalles', row.get('Detalles/Medidas', ''))
+            if val_det is None or pd.isna(val_det) or str(val_det).lower() in ['none', 'nan']:
+                det = ""
+            else:
+                det = str(val_det).strip()
+            
+            cnt = str(row.get('cantidad', row.get('Cantidad', '')))
+
+            pdf.cell(15, 6, limpiar_texto(itm), border=1, align="C")
+            pdf.cell(65, 6, limpiar_texto(dsc)[:35], border=1) 
+            pdf.cell(140, 6, limpiar_texto(det)[:85], border=1)
+            pdf.cell(15, 6, limpiar_texto(cnt), border=1, align="C")
+            pdf.cell(20, 6, limpiar_texto(esp_str), border=1, align="C")
+            pdf.cell(20, 6, limpiar_texto(kg_str), border=1, align="C", ln=True)
+
+        # Sección inferior de Comentarios
+        if observaciones and str(observaciones).strip() and str(observaciones) != "nan":
+            pdf.ln(5)
+            pdf.set_font("Arial", "I", 9)
+            pdf.multi_cell(0, 6, limpiar_texto(f"Comentarios / Observaciones: {observaciones}"), border=1)
+
+        pdf.output(ruta_pdf)
+        return ruta_pdf
+    except Exception as e:
+        print(f"Error generando PDF Cliente nativo interno: {e}")
+        return None
 
 # --- 🔐 SEGURIDAD UNIFICADA CON ROLES ---
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
