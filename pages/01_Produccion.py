@@ -917,7 +917,7 @@ with tab2:
             men_txt = str(men_val).strip() if men_val is not None and str(men_val) not in ['None', 'nan'] else ""
             conn_ver.close()
 
-        # --- Alertas Visuales (MEN y Comentarios unificados) ---
+        # --- Alertas Visuales (MEN y Comentarios) ---
         alertas_ui = []
         if "Aislación" in str(fila_pedido_ver.get('fuente', '')): alertas_ui.append("🧊 AISLACIÓN INTERIOR")
         if "Forro Metálico" in str(fila_pedido_ver.get('fuente', '')): alertas_ui.append("🛡️ FORRO METÁLICO")
@@ -929,18 +929,23 @@ with tab2:
             if obs_txt: msj += f"**📝 Comentarios:** {obs_txt}"
             st.warning(msj)
 
-        # 🎯 ENRUTADOR EXCLUSIVO DE CASOS (Muestra uno o el otro, nunca ambos)
+        # 🎯 ENRUTADOR EXCLUSIVO DE CASOS (INFALIBLE)
         st.markdown("##### 🖨️ Documentos para Taller (Impresión)")
         
-        if "excel" in fuente_pedido or "masiva" in fuente_pedido:
+        # 🛡️ NUEVA LÓGICA: Revisar si hay un Excel en la Base de Datos
+        ruta_ex = str(fila_pedido_ver.get('ruta_excel', '')).strip()
+        if ruta_ex in ['None', 'nan']: ruta_ex = ''
+        
+        # Si la ruta termina en formato Excel, es carga masiva 100% seguro.
+        es_masiva = ruta_ex.endswith(('.xlsx', '.xls', '.xlsm')) or "excel" in fuente_pedido or "masiva" in fuente_pedido
+
+        if es_masiva:
             # --- CASO MASIVO ---
-            st.info("📦 **Pedido por Carga Masiva: Formato de Ingeniería Detectado.**")
-            ruta_ex = str(fila_pedido_ver.get('ruta_excel', '')).strip()
-            if ruta_ex in ['None', 'nan']: ruta_ex = ''
+            st.info("📦 **Pedido subido en Excel (Carga Masiva):** Formato de Ingeniería Detectado.")
             
             if ruta_ex != "Generado Manualmente" and ruta_ex != "" and os.path.exists(ruta_ex):
                 with open(ruta_ex, "rb") as f:
-                    st.download_button("📥 Descargar Planilla Excel Original (OT-83)", f, file_name=os.path.basename(ruta_ex), type="primary", key="btn_descarga_excel_masiva_final")
+                    st.download_button("📥 Descargar Excel Original (OT-83)", f, file_name=os.path.basename(ruta_ex), type="primary", key="btn_descarga_excel_masiva_final")
             else:
                 st.warning("⚠️ La planilla Excel original no se encuentra guardada en el servidor (fue reemplazada o no se guardó la ruta).")
                 
@@ -977,6 +982,8 @@ with tab2:
                             st.error(f"Error al generar PDF: {e}")
             else:
                 st.error("⚠️ Este pedido está vacío. Se guardó sin agregar piezas válidas al carrito.")
+        
+        st.divider()
         
         st.divider()
 
