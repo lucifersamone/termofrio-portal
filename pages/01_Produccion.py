@@ -578,48 +578,47 @@ with tab1:
                 
                 if st.button("📥 Guardar Pedido (Excel)", type="primary"):
         
-        # --- MAGIA: Calculamos el correlativo correcto ---
+                    # --- MAGIA: Calculamos el correlativo correcto ---
                     numero_oficial = obtener_siguiente_correlativo_obra(obra_input, enc['tf'])
-        
-        nombre_seguro = str(numero_oficial).replace("/", "-").replace("\\", "-")
-        fecha_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-        ruta_guardado = os.path.join(CARPETA_EXCELS, f"Pedido_Local_{nombre_seguro}_{fecha_str}.xlsx")
-        
-        with open(ruta_guardado, "wb") as f:
-            f.write(arch_ped.getvalue())
-            
-        conn = get_connection()
-        c = conn.cursor()
-        flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
-        
-        # Consulta lineal segura sin comillas triples conflictivas
-        query_ped = "INSERT INTO pedidos (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo, nivel_urgencia, ruta_guardado, observaciones, men) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id"
-        
-        c.execute(query_ped, (
-            str(numero_oficial).strip(), enc['tf'], str(obra_input).strip(), str(ceco_input).strip(), 
-            quien, fuente, datetime.now(), flim.date(), float(neto), float(peso), 
-            0.0, float(m2_input), 'Pendiente', 'En Proceso', 'Normal', ruta_guardado, "", ""
-        ))
-        
-        pid = c.fetchone()[0]
-        
-        query_item = "INSERT INTO items_pedido (pedido_id, item_numero, descripcion, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
-        
-        for _, r in edited_df.iterrows():
-            cant_val = int(r['cantidad']) if pd.notnull(r['cantidad']) else 0
-            peso_val = float(r['peso_total']) if pd.notnull(r['peso_total']) else 0.0
-            esp_val = float(r['espesor']) if pd.notnull(r['espesor']) else 0.0
-            pre_val = float(r['precio_unitario']) if pd.notnull(r['precio_unitario']) else 0.0
-            tot_val = float(r['total_linea']) if pd.notnull(r['total_linea']) else 0.0
-            
-            c.execute(query_item, (
-                pid, str(r['item_num']).strip(), str(r['descripcion']).strip(), cant_val,
-                peso_val, esp_val, str(r['material']).strip(), str(r['unidad_cobro']).strip(),
-                pre_val, tot_val, str(r['origen_precio']).strip()
-            ))
-            
-        st.success(f"¡Guardado correctamente en DB y Bóveda como el pedido {numero_oficial}!")
-        st.rerun()
+                    
+                    nombre_seguro = str(numero_oficial).replace("/", "-").replace("\\", "-")
+                    fecha_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    ruta_guardado = os.path.join(CARPETA_EXCELS, f"Pedido_Local_{nombre_seguro}_{fecha_str}.xlsx")
+                    
+                    with open(ruta_guardado, "wb") as f:
+                        f.write(arch_ped.getvalue())
+                        
+                    conn = get_connection()
+                    c = conn.cursor()
+                    flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
+                    
+                    query_ped = "INSERT INTO pedidos (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo, nivel_urgencia, ruta_guardado, observaciones, men) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id"
+                    
+                    c.execute(query_ped, (
+                        str(numero_oficial).strip(), enc['tf'], str(obra_input).strip(), str(ceco_input).strip(), 
+                        quien, fuente, datetime.now(), flim.date(), float(neto), float(peso), 
+                        0.0, float(m2_input), 'Pendiente', 'En Proceso', 'Normal', ruta_guardado, "", ""
+                    ))
+                    
+                    pid = c.fetchone()[0]
+                    
+                    query_item = "INSERT INTO items_pedido (pedido_id, item_numero, descripcion, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                    
+                    for _, r in edited_df.iterrows():
+                        cant_val = int(r['cantidad']) if pd.notnull(r['cantidad']) else 0
+                        peso_val = float(r['peso_total']) if pd.notnull(r['peso_total']) else 0.0
+                        esp_val = float(r['espesor']) if pd.notnull(r['espesor']) else 0.0
+                        pre_val = float(r['precio_unitario']) if pd.notnull(r['precio_unitario']) else 0.0
+                        tot_val = float(r['total_linea']) if pd.notnull(r['total_linea']) else 0.0
+                        
+                        c.execute(query_item, (
+                            pid, str(r['item_num']).strip(), str(r['descripcion']).strip(), cant_val,
+                            peso_val, esp_val, str(r['material']).strip(), str(r['unidad_cobro']).strip(),
+                            pre_val, tot_val, str(r['origen_precio']).strip()
+                        ))
+                        
+                    st.success(f"¡Guardado correctamente en DB y Bóveda como el pedido {numero_oficial}!")
+                    st.rerun()
         
         # Capturamos el ID real generado por la base de datos de forma directa
         pid = c.fetchone()[0]
