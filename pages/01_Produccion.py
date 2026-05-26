@@ -946,135 +946,177 @@ with t_manual:
             st.info("No hay piezas en este pedido todavía.")
 
 with tab2:
-    st.header("📋 Gestión de Pedidos y Urgencias")
-    conn = get_connection(); dfp = pd.read_sql("SELECT * FROM pedidos ORDER BY id DESC", conn); conn.close()
-    
-    if not dfp.empty:
-        dfp['Alerta'] = dfp.apply(calcular_semaforo, axis=1)
+        st.header("📋 Gestión de Pedidos y Urgencias")
+        conn = get_connection()
+        dfp = pd.read_sql("SELECT * FROM pedidos ORDER BY id DESC", conn)
+        conn.close()
         
-        filtro = st.radio("Ver registros de Base de Datos:", ["Pendientes", "Terminados", "Todos"], horizontal=True)
-        if filtro == "Pendientes": dfv = dfp[dfp['estado']=='Pendiente']
-        elif filtro == "Terminados": dfv = dfp[dfp['estado']=='Terminado']
-        else: dfv = dfp
-        
-        cols_view = ['Alerta', 'num_pedido', 'tf', 'obra_codigo', 'quien_envia', 'nivel_urgencia', 'fecha_recepcion', 'fecha_limite', 'kg_estimados', 'kg_reales', 'estado']
-        columnas_finales = [c for c in cols_view if c in dfv.columns]
-        st.dataframe(dfv[columnas_finales], use_container_width=True, hide_index=True)
-        
-        # --- VISOR DE DETALLES Y MEDIDAS EN PANTALLA ---
-        st.markdown("---")
-        st.markdown("#### 🔍 Gestión de Documento Maestro")
-        
-        # Selección del pedido
-        pedido_a_ver = st.selectbox("Seleccionar Pedido:", dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'], key="ver_detalles_v2")
-        fila_pedido_ver = dfp[dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'] == pedido_a_ver].iloc[0]
-        
-        # Recuperamos la ruta guardada en la BD
-        ruta_ex = str(fila_pedido_ver.get('ruta_excel', '')).strip()
-        if ruta_ex in ['None', 'nan', '']: ruta_ex = None
+        if not dfp.empty:
+            dfp['Alerta'] = dfp.apply(calcular_semaforo, axis=1)
+            
+            filtro = st.radio("Ver registros de Base de Datos:", ["Pendientes", "Terminados", "Todos"], horizontal=True)
+            if filtro == "Pendientes": dfv = dfp[dfp['estado']=='Pendiente']
+            elif filtro == "Terminados": dfv = dfp[dfp['estado']=='Terminado']
+            else: dfv = dfp
+            
+            cols_view = ['Alerta', 'num_pedido', 'tf', 'obra_codigo', 'quien_envia', 'nivel_urgencia', 'fecha_recepcion', 'fecha_limite', 'kg_estimados', 'kg_reales', 'estado']
+            columnas_finales = [c for c in cols_view if c in dfv.columns]
+            st.dataframe(dfv[columnas_finales], use_container_width=True, hide_index=True)
+            
+            # 🛡️ Inicialización segura de variables para el bloque completo (PROBLEMS = 0)
+            fila_ped = None
+            obs_txt = ""
+            men_txt = ""
+            df_items_raw = pd.DataFrame()
 
-        col_left, col_right = st.columns(2)
-        
-        with col_left:
-            st.markdown("##### 📄 Comprobante Original")
-            if ruta_ex and os.path.exists(ruta_ex):
-                with open(ruta_ex, "rb") as f:
-                    st.download_button("📥 Descargar Excel Original", f, file_name=os.path.basename(ruta_ex), key="dl_excel_orig")
-            else:
-                st.warning("⚠️ El archivo Excel original no está disponible en el servidor.")
+            st.markdown("#### 🔍 Ver Detalle y Medidas de un Pedido")
+            st.caption("Selecciona un pedido para revisar sus especificaciones, descargar el comprobante o generar el PDF oficial.")
+            
+            col_b1, col_b2 = st.columns([1, 2])
+            
+            for c in ['num_pedido', 'obra_codigo', 'id']:
+                if c in dfp.columns:
+                    dfp[c] = dfp[c].astype(str).str.strip()
 
-        with col_right:
-            st.markdown("##### 🚀 Transformación a PDF")
-            if st.button("📄 Generar PDF (Timbre y Firma)", key="btn_pdf_timbrado_v3", type="primary"):
-                if not ruta_ex or not os.path.exists(ruta_ex):
-                    st.error("❌ El archivo Excel original no se encuentra físicamente en el servidor para ser procesado.")
-                else:
-                    with st.spinner("Transformando planilla Excel a formato oficial PDF..."):
-                        try:
-                            # 🛡️ 1. Declaración local para eliminar los errores de definición de Pylance
-                            obs_txt = ""
-                            men_txt = ""
-                            
-                            # Extraemos de forma segura los comentarios directo desde la Base de Datos
-                            conn_pdf = get_connection()
-                            id_ver_pdf = str(fila_pedido_ver['id']).strip()
-                            obs_query = pd.read_sql(f"SELECT observaciones, men FROM pedidos WHERE TRIM(CAST(id AS TEXT))='{id_ver_pdf}'", conn_pdf)
-                            conn_pdf.close()
-                            
-                            if not obs_query.empty:
-                                obs_val = obs_query.iloc[0]['observaciones']
-                                obs_txt = str(obs_val).strip() if obs_val is not None and str(obs_val) not in ['None', 'nan'] else ""
-                                if 'men' in obs_query.columns:
-                                    men_val = obs_query.iloc[0]['men']
-                                    men_txt = str(men_val).strip() if men_val is not None and str(men_val) not in ['None', 'nan'] else ""
+            with col_b1:
+                pedido_a_ver = st.selectbox("Seleccionar Pedido:", dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'], key="ver_detalles_ped_final")
+                if not dfp.empty:
+                    fila_ped = dfp[dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'] == pedido_a_ver].iloc[0]
 
-                            # 2. Leer el Excel nativo saltándose las filas superiores estáticas
-                            df_raw = pd.read_excel(ruta_ex, header=None)
-                            
-                            start_row = 28
-                            for idx, row_vals in df_raw.iterrows():
-                                if str(row_vals[0]).strip().upper() == "Nº" or "DESCRIPCION" in str(row_vals[5]).strip().upper():
-                                    start_row = idx + 1
-                                    break
-                            
-                            # 3. Compilar piezas con el mapeo exacto de columnas de Termofrio
-                            clean_rows = []
-                            for idx in range(start_row, len(df_raw)):
-                                r_val = df_raw.iloc[idx]
-                                item_id = r_val[0]
-                                if pd.isna(item_id) or str(item_id).strip() == "": 
-                                    continue
+            with col_b2:
+                if fila_ped is not None:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    id_ver = str(fila_ped['id']).strip()
+                    num_ped_ver = str(fila_ped['num_pedido']).strip()
+                    fuente_pedido = str(fila_ped.get('fuente', '')).strip().lower()
+
+                    conn_ver = get_connection()
+                    df_items_raw = pd.read_sql(f"SELECT * FROM items_pedido WHERE TRIM(CAST(pedido_id AS TEXT))='{id_ver}' OR TRIM(CAST(pedido_id AS TEXT))='{num_ped_ver}'", conn_ver)
+                    obs_query = pd.read_sql(f"SELECT observaciones, men FROM pedidos WHERE TRIM(CAST(id AS TEXT))='{id_ver}'", conn_ver)
+                    conn_ver.close()
+                    
+                    if not obs_query.empty:
+                        obs_val = obs_query.iloc[0]['observaciones']
+                        obs_txt = str(obs_val).strip() if obs_val is not None and str(obs_val) not in ['None', 'nan'] else ""
+                        if 'men' in obs_query.columns:
+                            men_val = obs_query.iloc[0]['men']
+                            men_txt = str(men_val).strip() if men_val is not None and str(men_val) not in ['None', 'nan'] else ""
+
+            # --- Alertas Visuales de Fabricación ---
+            if fila_ped is not None:
+                alertas_ui = []
+                if "Aislación" in str(fila_ped.get('fuente', '')): alertas_ui.append("🧊 AISLACIÓN INTERIOR")
+                if "Forro Metálico" in str(fila_ped.get('fuente', '')): alertas_ui.append("🛡️ FORRO METÁLICO")
+
+                if alertas_ui or men_txt or obs_txt:
+                    msj = ""
+                    if alertas_ui: msj += f"**⚠️ ATENCIÓN:** Este pedido incluye **{', '.join(alertas_ui)}**\n\n"
+                    if men_txt: msj += f"**👤 MEN:** {men_txt} \n"
+                    if obs_txt: msj += f"**📝 Comentarios:** {obs_txt}"
+                    st.warning(msj)
+
+            st.divider()
+
+            # --- COLUMNAS DE ACCIÓN (COMPROBANTE Y PDF) ---
+            col_left, col_right = st.columns(2)
+            
+            with col_left:
+                st.markdown("##### 📄 Comprobante Original")
+                if fila_ped is not None:
+                    ruta_ex = str(fila_ped.get('ruta_excel', '')).strip()
+                    if ruta_ex and ruta_ex not in ['None', 'nan'] and os.path.exists(ruta_ex):
+                        with open(ruta_ex, "rb") as f:
+                            st.download_button("📥 Descargar Excel Original", f, file_name=os.path.basename(ruta_ex), key="dl_excel_orig")
+                    else:
+                        st.warning("💡 *Planilla física no alojada en caché (Se puede construir PDF desde Base de Datos).*")
+
+            with col_right:
+                st.markdown("##### 🚀 Transformación a PDF")
+                if st.button("📄 Generar PDF (Timbre y Firma)", key="btn_pdf_timbrado_v4", type="primary"):
+                    if fila_ped is None:
+                        st.error("❌ No hay ningún pedido seleccionado.")
+                    else:
+                        with st.spinner("Generando PDF oficial de despacho..."):
+                            try:
+                                ruta_ex = str(fila_ped.get('ruta_excel', '')).strip()
+                                if ruta_ex in ['None', 'nan', '']: ruta_ex = ""
+                                fuente_pedido = str(fila_ped.get('fuente', '')).strip().lower()
+                                es_masiva = ruta_ex.endswith(('.xlsx', '.xls', '.xlsm')) or "excel" in fuente_pedido or "masiva" in fuente_pedido
+
+                                df_para_pdf = pd.DataFrame()
+
+                                # Caso 1: Procesar filas de ingeniería desde el Excel si está disponible
+                                if es_masiva and ruta_ex and os.path.exists(ruta_ex):
+                                    df_raw = pd.read_excel(ruta_ex, header=None)
+                                    start_row = 28
+                                    for idx, row_vals in df_raw.iterrows():
+                                        if str(row_vals[0]).strip().upper() == "Nº" or "DESCRIPCION" in str(row_vals[5]).strip().upper():
+                                            start_row = idx + 1
+                                            break
                                     
-                                tipo_pieza = str(r_val[5]).strip()
+                                    clean_rows = []
+                                    for idx in range(start_row, len(df_raw)):
+                                        r_val = df_raw.iloc[idx]
+                                        item_id = r_val[0]
+                                        if pd.isna(item_id) or str(item_id).strip() == "": continue
+                                        
+                                        tipo_pieza = str(r_val[5]).strip()
+                                        val_a = str(r_val[9]).strip() if pd.notna(r_val[9]) else ""
+                                        val_b = str(r_val[10]).strip() if pd.notna(r_val[10]) else ""
+                                        val_h = str(r_val[18]).strip() if pd.notna(r_val[18]) else ""
+                                        val_ue = str(r_val[26]).strip() if pd.notna(r_val[26]) else ""
+                                        val_us = str(r_val[28]).strip() if pd.notna(r_val[28]) else ""
+                                        
+                                        dims = []
+                                        if val_a: dims.append(f"A:{val_a}cm")
+                                        if val_b: dims.append(f"B:{val_b}cm")
+                                        if val_h: dims.append(f"H:{val_h}")
+                                        
+                                        parts = []
+                                        if dims: parts.append("Dim: " + " ".join(dims))
+                                        if val_ue or val_us: parts.append(f"Unión: {val_ue} / {val_us}".strip(" /"))
+                                        detalles_finales_str = " | ".join(parts)
+                                        
+                                        clean_rows.append({
+                                            'item_numero': str(item_id).strip(),
+                                            'descripcion': tipo_pieza,
+                                            'detalles': detalles_finales_str,
+                                            'cantidad': r_val[8] if pd.notna(r_val[8]) else 1,
+                                            'espesor': r_val[31] if pd.notna(r_val[31]) else 0.5,
+                                            'peso_total': r_val[33] if pd.notna(r_val[33]) else 0.0
+                                        })
+                                    df_para_pdf = pd.DataFrame(clean_rows)
+
+                                # Caso 2: Respaldo automático desde Supabase (Pedidos manuales o excels borrados)
+                                if df_para_pdf.empty:
+                                    if not df_items_raw.empty:
+                                        df_para_pdf = df_items_raw.copy()
+                                        if 'item_numero' not in df_para_pdf.columns and 'item_num' in df_para_pdf.columns:
+                                            df_para_pdf['item_numero'] = df_para_pdf['item_num']
+                                    else:
+                                        st.error("❌ No se encontraron registros de piezas para este pedido.")
+                                        st.stop()
+
+                                # 🚀 Ejecutar el generador FPDF nativo interno
+                                ruta_pdf_final = generar_pdf_cliente(
+                                    pedido_num=fila_ped['num_pedido'],
+                                    tf=fila_ped['tf'],
+                                    obra=fila_ped['obra_codigo'],
+                                    ceco=fila_ped['ceco'],
+                                    solicitante=fila_ped['quien_envia'],
+                                    items_df=df_para_pdf, 
+                                    kg_est=fila_ped['kg_estimados'],
+                                    observaciones=obs_txt,
+                                    men=men_txt
+                                )
                                 
-                                # Extracción por índices físicos de columnas (F=5, I=8, J=9, K=10, S=18, AA=26, AC=28)
-                                val_a = str(r_val[9]).strip() if pd.notna(r_val[9]) else ""
-                                val_b = str(r_val[10]).strip() if pd.notna(r_val[10]) else ""
-                                val_h = str(r_val[18]).strip() if pd.notna(r_val[18]) else ""
-                                val_ue = str(r_val[26]).strip() if pd.notna(r_val[26]) else ""
-                                val_us = str(r_val[28]).strip() if pd.notna(r_val[28]) else ""
-                                
-                                dims = []
-                                if val_a: dims.append(f"A:{val_a}cm")
-                                if val_b: dims.append(f"B:{val_b}cm")
-                                if val_h: dims.append(f"H:{val_h}")
-                                
-                                parts = []
-                                if dims: parts.append("Dim: " + " ".join(dims))
-                                if val_ue or val_us: parts.append(f"Unión: {val_ue} / {val_us}".strip(" /"))
-                                detalles_finales_str = " | ".join(parts)
-                                
-                                clean_rows.append({
-                                    'item_numero': str(item_id).strip(),
-                                    'descripcion': tipo_pieza,
-                                    'detalles': detalles_finales_str,
-                                    'cantidad': r_val[8] if pd.notna(r_val[8]) else 1,
-                                    'espesor': r_val[31] if pd.notna(r_val[31]) else 0.5,
-                                    'peso_total': r_val[33] if pd.notna(r_val[33]) else 0.0
-                                })
-                                
-                            df_para_pdf = pd.DataFrame(clean_rows)
-                            
-                            # 4. 🚀 Disparar tu generador FPDF con la tabla y las variables ya resueltas
-                            ruta_pdf_final = generar_pdf_cliente(
-                                pedido_num=fila_pedido_ver['num_pedido'],
-                                tf=fila_pedido_ver['tf'],
-                                obra=fila_pedido_ver['obra_codigo'],
-                                ceco=fila_pedido_ver['ceco'],
-                                solicitante=fila_pedido_ver['quien_envia'],
-                                items_df=df_para_pdf, 
-                                kg_est=fila_pedido_ver['kg_estimados'],
-                                observaciones=obs_txt,
-                                men=men_txt
-                            )
-                            
-                            if ruta_pdf_final and os.path.exists(ruta_pdf_final):
-                                with open(ruta_pdf_final, "rb") as f:
-                                    st.download_button("📥 Descargar PDF Terminado (Timbrado)", f, file_name=f"Pedido_Despacho_OT-{fila_pedido_ver['num_pedido']}.pdf", key="dl_pdf_final_perfecto")
-                            else:
-                                st.error("❌ Ocurrió un inconveniente al empaquetar el archivo PDF definitivo.")
-                        except Exception as e:
-                            st.error(f"Error procesando la transformación del documento: {e}")
+                                if ruta_pdf_final and os.path.exists(ruta_pdf_final):
+                                    with open(ruta_pdf_final, "rb") as f:
+                                        st.download_button("📥 Descargar PDF Terminado (Timbrado)", f, file_name=f"Pedido_Despacho_OT-{fila_ped['num_pedido']}.pdf", key="dl_pdf_final_perfecto_v4")
+                                else:
+                                    st.error("❌ Ocurrió un inconveniente al empaquetar el archivo PDF definitivo.")
+                            except Exception as e:
+                                st.error(f"Error procesando la transformación del documento: {e}")
 
         st.subheader("🚀 Fila de Producción y Urgencias")
         pend_fifo = dfp[dfp['estado']=='Pendiente'].copy()
