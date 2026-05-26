@@ -621,26 +621,27 @@ with tab1:
                         st.success(f"¡Guardado correctamente en DB y Bóveda como el pedido {numero_oficial}!")
                         st.rerun()
 
-            with t_manual:
-                if 'carrito_admin' not in st.session_state:
-                    st.session_state.carrito_admin = []
 
-            st.info("Formulario Inteligente: Selecciona la pieza y el sistema solo te pedirá las dimensiones necesarias.")
+    with t_manual:
+        if 'carrito_admin' not in st.session_state:
+            st.session_state.carrito_admin = []
+
+        st.info("Formulario Inteligente: Selecciona la pieza y el sistema solo te pedirá las dimensiones necesarias.")
         
-            df_obras_m = get_obras_ceco_df()
-            lista_obras = ["Seleccione Obra..."] + df_obras_m['nombre'].tolist() if not df_obras_m.empty else ["Seleccione Obra..."]
+        df_obras_m = get_obras_ceco_df()
+        lista_obras = ["Seleccione Obra..."] + df_obras_m['nombre'].tolist() if not df_obras_m.empty else ["Seleccione Obra..."]
         
-            col_m1, col_m2, col_m3 = st.columns(3)
-            with col_m1:
-                tf_manual = st.text_input("Código TF ó CC (Ej: 13655 o CC02)")
+        col_m1, col_m2, col_m3 = st.columns(3)
+        with col_m1:
+            tf_manual = st.text_input("Código TF ó CC (Ej: 13655 o CC02)")
             ceco_auto, obra_auto = buscar_datos_por_tf(tf_manual)
             index_obra = 0
             if obra_auto and obra_auto in lista_obras: index_obra = lista_obras.index(obra_auto)
             obra_manual = st.selectbox("🏗️ Obra Destino", lista_obras + ["Otra (Escribir manual)"], index=index_obra)
             if obra_manual == "Otra (Escribir manual)": obra_manual = st.text_input("Escribir nombre de la obra:", value=obra_auto if obra_auto else "")
 
-            with col_m2:
-                num_manual = st.text_input("N° de Pedido (Automático)", value="Se asignará automáticamente", disabled=True)
+        with col_m2:
+            num_manual = st.text_input("N° de Pedido (Automático)", value="Se asignará automáticamente", disabled=True)
             
             default_ceco_admin = ceco_auto if ceco_auto else ""
             if tf_manual.strip().upper() == "CC02":
@@ -649,32 +650,32 @@ with tab1:
             ceco_manual = st.text_input("CECO (Opcional)", value=default_ceco_admin)
             men_manual = st.text_input("MEN (Opcional)")
             
-            with col_m3:
-                quien_manual = st.text_input("👤 Solicitante (OBLIGATORIO)")
+        with col_m3:
+            quien_manual = st.text_input("👤 Solicitante (OBLIGATORIO)")
             correo_manual = st.text_input("📧 Correo Electrónico (OBLIGATORIO)")
             
-            col_mat, col_aisl = st.columns([2, 1])
-            with col_mat: mat_manual = st.selectbox("🛠️ Material General", get_materiales_disponibles(), key="mat_manual_admin")
-            with col_aisl:
-                st.markdown("<br>", unsafe_allow_html=True) 
+        col_mat, col_aisl = st.columns([2, 1])
+        with col_mat: mat_manual = st.selectbox("🛠️ Material General", get_materiales_disponibles(), key="mat_manual_admin")
+        with col_aisl:
+            st.markdown("<br>", unsafe_allow_html=True) 
             aislacion_manual = st.checkbox("🧊 Incluir Aislación Interior", key="chk_aisl_admin")
             forro_metalico_manual = st.checkbox("🛡️ Incluir Forro Metálico", key="chk_forro_admin")
 
-            st.divider()
-            st.markdown("#### 🛒 1. Agregar Piezas al Pedido")
+        st.divider()
+        st.markdown("#### 🛒 1. Agregar Piezas al Pedido")
         
-            df_precios_m = get_precios_df()
+        df_precios_m = get_precios_df()
         
-            c_p1, c_p2 = st.columns([3, 1])
-            with c_p1:
-                opcion_desc = st.selectbox("Nombre de la Pieza", ["Seleccione..."] + LISTA_DESCRIPCIONES + ["Otra (Escribir manual)"])
+        c_p1, c_p2 = st.columns([3, 1])
+        with c_p1:
+            opcion_desc = st.selectbox("Nombre de la Pieza", ["Seleccione..."] + LISTA_DESCRIPCIONES + ["Otra (Escribir manual)"])
             desc_m = st.text_input("Escribir nombre de la pieza:") if opcion_desc == "Otra (Escribir manual)" else (opcion_desc if opcion_desc != "Seleccione..." else "")
-            cant_m = c_p2.number_input("Cantidad", min_value=1, value=1, key="cant_m")
+        cant_m = c_p2.number_input("Cantidad", min_value=1, value=1, key="cant_m")
 
-            l_a = l_b = l_c = l_d = l_d_desv = l_h = diam = diam2 = ang = casq = sim = u_ent = u_sal = ""
+        l_a = l_b = l_c = l_d = l_d_desv = l_h = diam = diam2 = ang = casq = sim = u_ent = u_sal = ""
         
-            if desc_m:
-                req_fields = MAPEO_CAMPOS.get(desc_m, MAPEO_CAMPOS["Pieza especial"])
+        if desc_m:
+            req_fields = MAPEO_CAMPOS.get(desc_m, MAPEO_CAMPOS.get("Pieza especial", []))
             
             with st.expander("📐 Dimensiones de Fabricación", expanded=True):
                 if any(k in req_fields for k in ["A", "B", "C", "D", "d"]):
@@ -726,7 +727,6 @@ with tab1:
                 st.caption(f"📏 Sugerido por Norma SMACNA (250 Pa): {esp_smacna} mm")
                 
             with cw2:
-                # --- MAGIA EN TIEMPO REAL PARA EL PESO ---
                 peso_teorico = calcular_peso_teorico(desc_m, l_a, l_b, l_c, l_d, l_h, diam, diam2, esp_m)
                 
                 if peso_teorico > 0:
@@ -815,11 +815,11 @@ with tab1:
                         })
                         st.success(f"✅ Pieza agregada exitosamente.")
                         st.rerun()
-
+                            
                         st.divider()
-    st.markdown("#### 📋 2. Resumen del Pedido Manual")
+        st.markdown("#### 📋 2. Resumen del Pedido Manual")
         
-    if len(st.session_state.carrito_admin) > 0:
+        if len(st.session_state.carrito_admin) > 0:
             df_carrito = pd.DataFrame(st.session_state.carrito_admin)
             
             st.dataframe(
@@ -869,8 +869,8 @@ with tab1:
                     conn.commit(); conn.close()
                     st.session_state.carrito_admin = [] 
                     st.success(f"✅ ¡Pedido manual creado como {numero_oficial} y enviado a la cola de fabricación!")
-            else:
-                st.info("No hay piezas en este pedido todavía.")
+        else:
+            st.info("No hay piezas en este pedido todavía.")
 
 with tab2:
     st.header("📋 Gestión de Pedidos y Urgencias")
