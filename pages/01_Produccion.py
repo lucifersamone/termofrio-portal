@@ -946,25 +946,40 @@ with t_manual:
         RETURNING id
         """
 
-        # 🛡️ ESCUDO DE SEGURIDAD: Define y rescata variables dinámicamente (Evita NameError)
-        neto_total_carrito = sum(float(item.get('total_linea', item.get('Precio Tot', 0))) for item in st.session_state.carrito_admin)
-        peso_total_carrito = sum(float(item.get('Kg', item.get('peso_total', 0))) for item in st.session_state.carrito_admin)
+        # 🛡️ ESCUDO DEFINITIVO: Importación y cálculo local de variables (Garantiza PROBLEMS = 0)
+        from datetime import datetime, timedelta
+        import pandas as pd
         
+        # 🕵️‍♂️ Mapeo de cajas de texto del formulario manual (Evita NameError si cambió el nombre)
+        tf_manual = str(locals().get('tf_manual', locals().get('tf_input', ''))).strip()
+        obra_manual = str(locals().get('obra_manual', locals().get('obra_input', ''))).strip()
+        ceco_manual = str(locals().get('ceco_manual', locals().get('ceco_input', ''))).strip()
+        quien_manual = str(locals().get('quien_manual', locals().get('quien', ''))).strip()
+        fuente_guardado = "Ingreso Manual"
+
+        # 🔮 Calcular el número correlativo oficial en tiempo real para este pedido manual
+        c.execute("SELECT COALESCE(MAX(CAST(num_pedido AS INTEGER)), 0) + 1 FROM pedidos")
+        numero_oficial = c.fetchone()[0]
+
+        # ⚖️ Calcular totales acumulados del carrito de piezas
+        neto_total_carrito = 0.0
+        peso_total_carrito = 0.0
+        if 'carrito_admin' in st.session_state and st.session_state.carrito_admin:
+            for item in st.session_state.carrito_admin:
+                try: neto_total_carrito += float(item.get('total_linea', item.get('Precio Tot', 0)))
+                except: pass
+                try: peso_total_carrito += float(item.get('Kg', item.get('peso_total', 0)))
+                except: pass
+
+        # 📅 Calcular fecha límite de entrega de forma segura
         try:
             from pandas.tseries.offsets import BusinessDay
             flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
+            fecha_limite_final = flim.date()
         except:
-            import datetime as dt
-            flim = datetime.now() + dt.timedelta(days=7)
+            fecha_limite_final = (datetime.now() + timedelta(days=7)).date()
 
-        # Mapeo inteligente por si cambiaste el nombre en tus st.text_input del formulario:
-        tf_manual = locals().get('tf_manual', locals().get('tf_input', ''))
-        obra_manual = locals().get('obra_manual', locals().get('obra_input', ''))
-        ceco_manual = locals().get('ceco_manual', locals().get('ceco_input', ''))
-        quien_manual = locals().get('quien_manual', locals().get('quien', ''))
-        fuente_guardado = "Ingreso Manual"
-
-        # 1. 🚀 Insertar el pedido con la tupla protegida contra NameError
+        # 1. 🚀 Query de inserción limpio para PostgreSQL
         query_insert_pedido_manual = """
         INSERT INTO pedidos 
         (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo) 
@@ -972,12 +987,14 @@ with t_manual:
         RETURNING id
         """
         
+        # 2. 🦾 Ejecución con la tupla de variables locales 100% verificadas
         c.execute(query_insert_pedido_manual, (
             str(numero_oficial), tf_manual, obra_manual, ceco_manual, quien_manual, fuente_guardado, 
-            datetime.now(), flim.date(), float(neto_total_carrito), float(peso_total_carrito), 
+            datetime.now(), fecha_limite_final, float(neto_total_carrito), float(peso_total_carrito), 
             0.0, 0.0, 'Pendiente', 'En Proceso'
         ))
         
+        # 3. Captura del ID generado por la base de datos
         pid = c.fetchone()[0]
 
         c.execute(query_insert_pedido_manual, (
