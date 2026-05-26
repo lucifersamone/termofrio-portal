@@ -891,16 +891,15 @@ with tab2:
         # --- VISOR DE DETALLES Y MEDIDAS EN PANTALLA ---
         st.markdown("---")
         st.markdown("#### 🔍 Ver Detalle y Medidas de un Pedido")
-        st.caption("Selecciona un pedido para ver sus especificaciones o generar el documento oficial de fabricación.")
+        st.caption("Selecciona un pedido para revisar sus especificaciones o descargar su documento oficial de taller.")
         col_b1, col_b2 = st.columns([1, 2])
         
-        # Limpieza preventiva
         for c in ['num_pedido', 'obra_codigo', 'id']:
             if c in dfp.columns:
                 dfp[c] = dfp[c].astype(str).str.strip()
 
         with col_b1:
-            pedido_a_ver = st.selectbox("Seleccionar Pedido:", dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'], key="ver_detalles_ped")
+            pedido_a_ver = st.selectbox("Seleccionar Pedido:", dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'], key="ver_detalles_ped_final")
             fila_pedido_ver = dfp[dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'] == pedido_a_ver].iloc[0]
             id_ver = str(fila_pedido_ver['id']).strip()
             num_ped_ver = str(fila_pedido_ver['num_pedido']).strip()
@@ -918,101 +917,67 @@ with tab2:
             men_txt = str(men_val).strip() if men_val is not None and str(men_val) not in ['None', 'nan'] else ""
             conn_ver.close()
 
-        # 🎯 BIPARTICIÓN INTELIGENTE DE FORMATOS DE TALLER
+        # --- Alertas Visuales (MEN y Comentarios unificados) ---
+        alertas_ui = []
+        if "Aislación" in str(fila_pedido_ver.get('fuente', '')): alertas_ui.append("🧊 AISLACIÓN INTERIOR")
+        if "Forro Metálico" in str(fila_pedido_ver.get('fuente', '')): alertas_ui.append("🛡️ FORRO METÁLICO")
+
+        if alertas_ui or men_txt or obs_txt:
+            msj = ""
+            if alertas_ui: msj += f"**⚠️ ATENCIÓN:** Este pedido incluye **{', '.join(alertas_ui)}**\n\n"
+            if men_txt: msj += f"**👤 MEN:** {men_txt} \n"
+            if obs_txt: msj += f"**📝 Comentarios:** {obs_txt}"
+            st.warning(msj)
+
+        # 🎯 ENRUTADOR EXCLUSIVO DE CASOS (Muestra uno o el otro, nunca ambos)
         st.markdown("##### 🖨️ Documentos para Taller (Impresión)")
         
-        if "excel" in fuente_pedido or "masiva" in fuente_pedido or df_items_raw.empty:
-            # --- FORMATO A: CARGA MASIVA (Planilla de Ingeniería Original) ---
-            st.info("📦 **Pedido por Carga Masiva:** Formato de Ingeniería Detectado.")
-            
-            # 🛡️ CAMBIO CLAVE: Buscamos en 'ruta_guardado' para hacer match con la base de datos
-            ruta_ex = str(fila_pedido_ver.get('ruta_guardado', '')).strip()
+        if "excel" in fuente_pedido or "masiva" in fuente_pedido:
+            # --- CASO MASIVO ---
+            st.info("📦 **Pedido por Carga Masiva: Formato de Ingeniería Detectado.**")
+            ruta_ex = str(fila_pedido_ver.get('ruta_excel', '')).strip()
             if ruta_ex in ['None', 'nan']: ruta_ex = ''
             
             if ruta_ex != "Generado Manualmente" and ruta_ex != "" and os.path.exists(ruta_ex):
                 with open(ruta_ex, "rb") as f:
-                    st.download_button("📥 Descargar Planilla Excel Original (OT-83)", f, file_name=os.path.basename(ruta_ex), type="primary")
+                    st.download_button("📥 Descargar Planilla Excel Original (OT-83)", f, file_name=os.path.basename(ruta_ex), type="primary", key="btn_descarga_excel_masiva_final")
             else:
-                st.warning("⚠️ La planilla Excel original no se encuentra guardada en el servidor.")
-
+                st.warning("⚠️ La planilla Excel original no se encuentra guardada en el servidor (fue reemplazada o no se guardó la ruta).")
+                
         else:
-            # --- FORMATO B: INGRESO MANUAL (Orden de Trabajo Interna OT-54) ---
-            st.success("📝 **Pedido Manual:** Desplegando desglose de piezas.")
-            df_items_display = df_items_raw[['item_numero', 'descripcion', 'detalles', 'cantidad', 'espesor', 'peso_total']].rename(columns={
-                'item_numero': 'Ítem', 'descripcion': 'Pieza', 'detalles': 'Medidas y Especificaciones', 'cantidad': 'Cant.', 'espesor': 'Espesor (mm)', 'peso_total': 'Peso (Kg)'
-            })
-            st.dataframe(df_items_display, use_container_width=True, hide_index=True)
+            # --- CASO MANUAL ---
+            st.success("📝 **Pedido por Carga Manual**")
             
-            if st.button("📄 Generar Orden de Trabajo (PDF)", key="btn_ot_interna", type="primary"):
-                with st.spinner("Dibujando Orden de Trabajo..."):
-                    ruta_pdf_ot = generar_pdf_manual(
-                        pedido_num=fila_pedido_ver['num_pedido'],
-                        tf=fila_pedido_ver['tf'],
-                        obra=fila_pedido_ver['obra_codigo'],
-                        ceco=fila_pedido_ver['ceco'],
-                        solicitante=fila_pedido_ver['quien_envia'],
-                        items_df=df_items_raw, 
-                        kg_reales=0, 
-                        fuente=fila_pedido_ver['fuente'],
-                        observaciones=obs_txt,
-                        tipo="interna",
-                        men=men_txt
-                    )
-                    if ruta_pdf_ot:
-                        with open(ruta_pdf_ot, "rb") as f:
-                            st.download_button("📥 Descargar PDF Orden de Trabajo", f, file_name=f"Orden_Trabajo_{fila_pedido_ver['num_pedido']}.pdf")
-
-        # --- Alertas Visuales (MEN y Comentarios) ---
-        alertas_ui = []
-        if "Aislación" in str(fila_pedido_ver.get('fuente', '')): alertas_ui.append("🧊 AISLACIÓN INTERIOR")
-        if "Forro Metálico" in str(fila_pedido_ver.get('fuente', '')): alertas_ui.append("🛡️ FORRO METÁLICO")
-
-        if alertas_ui or men_txt or obs_txt:
-            msj = ""
-            if alertas_ui: msj += f"**⚠️ ATENCIÓN:** Este pedido incluye **{', '.join(alertas_ui)}**\n\n"
-            if men_txt: msj += f"**👤 MEN:** {men_txt} \n"
-            if obs_txt: msj += f"**📝 Comentarios:** {obs_txt}"
-            st.warning(msj)
-
-        else:
-            # --- FORMATO B: INGRESO MANUAL (Orden de Trabajo Interna OT-54) ---
-            st.success("📝 **Pedido Manual:** Desplegando desglose de piezas.")
-            df_items_display = df_items_raw[['item_numero', 'descripcion', 'detalles', 'cantidad', 'espesor', 'peso_total']].rename(columns={
-                'item_numero': 'Ítem', 'descripcion': 'Pieza', 'detalles': 'Medidas y Especificaciones', 'cantidad': 'Cant.', 'espesor': 'Espesor (mm)', 'peso_total': 'Peso (Kg)'
-            })
-            st.dataframe(df_items_display, use_container_width=True, hide_index=True)
-            
-            if st.button("📄 Generar Orden de Trabajo (PDF)", key="btn_ot_interna_2", type="primary"):
-                with st.spinner("Dibujando Orden de Trabajo..."):
-                    ruta_pdf_ot = generar_pdf_manual(
-                        pedido_num=fila_pedido_ver['num_pedido'],
-                        tf=fila_pedido_ver['tf'],
-                        obra=fila_pedido_ver['obra_codigo'],
-                        ceco=fila_pedido_ver['ceco'],
-                        solicitante=fila_pedido_ver['quien_envia'],
-                        items_df=df_items_raw, 
-                        kg_reales=0, 
-                        fuente=fila_pedido_ver['fuente'],
-                        observaciones=obs_txt,
-                        tipo="interna",
-                        men=men_txt
-                    )
-                    if ruta_pdf_ot:
-                        with open(ruta_pdf_ot, "rb") as f:
-                            st.download_button("📥 Descargar PDF Orden de Trabajo", f, file_name=f"Orden_Trabajo_{fila_pedido_ver['num_pedido']}.pdf")
-
-        # --- Alertas Visuales (MEN y Comentarios) ---
-        alertas_ui = []
-        if "Aislación" in str(fila_pedido_ver.get('fuente', '')): alertas_ui.append("🧊 AISLACIÓN INTERIOR")
-        if "Forro Metálico" in str(fila_pedido_ver.get('fuente', '')): alertas_ui.append("🛡️ FORRO METÁLICO")
-
-        if alertas_ui or men_txt or obs_txt:
-            msj = ""
-            if alertas_ui: msj += f"**⚠️ ATENCIÓN:** Este pedido incluye **{', '.join(alertas_ui)}**\n\n"
-            if men_txt: msj += f"**👤 MEN:** {men_txt} \n"
-            if obs_txt: msj += f"**📝 Comentarios:** {obs_txt}"
-            st.warning(msj)
-
+            if not df_items_raw.empty:
+                df_items_display = df_items_raw[['item_numero', 'descripcion', 'detalles', 'cantidad', 'espesor', 'peso_total']].rename(columns={
+                    'item_numero': 'Ítem', 'descripcion': 'Pieza', 'detalles': 'Medidas y Especificaciones', 'cantidad': 'Cant.', 'espesor': 'Espesor (mm)', 'peso_total': 'Peso (Kg)'
+                })
+                st.dataframe(df_items_display, use_container_width=True, hide_index=True)
+                
+                if st.button("📄 Generar Orden de Trabajo (PDF)", key="btn_ot_interna_manual_final", type="primary"):
+                    with st.spinner("Generando Orden de Trabajo..."):
+                        try:
+                            ruta_pdf_ot = generar_pdf_manual(
+                                pedido_num=fila_pedido_ver['num_pedido'],
+                                tf=fila_pedido_ver['tf'],
+                                obra=fila_pedido_ver['obra_codigo'],
+                                ceco=fila_pedido_ver['ceco'],
+                                solicitante=fila_pedido_ver['quien_envia'],
+                                items_df=df_items_raw, 
+                                kg_reales=0, 
+                                fuente=fila_pedido_ver['fuente'],
+                                observaciones=obs_txt,
+                                tipo="interna",
+                                men=men_txt
+                            )
+                            if ruta_pdf_ot:
+                                with open(ruta_pdf_ot, "rb") as f:
+                                    st.download_button("📥 Descargar PDF Orden de Trabajo", f, file_name=f"Orden_Trabajo_{fila_pedido_ver['num_pedido']}.pdf", key="btn_download_ot_pdf_manual_ok_final")
+                        except Exception as e:
+                            st.error(f"Error al generar PDF: {e}")
+            else:
+                st.error("⚠️ Este pedido está vacío. Se guardó sin agregar piezas válidas al carrito.")
+        
         st.divider()
 
         st.subheader("🚀 Fila de Producción y Urgencias")
