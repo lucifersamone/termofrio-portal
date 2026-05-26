@@ -938,17 +938,49 @@ with t_manual:
                     if aislacion_manual: fuente_guardado += " (Aislación)"
                     if forro_metalico_manual: fuente_guardado += " (Forro Metálico)"
                     
-                    c.execute("INSERT INTO pedidos (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo, nivel_urgencia, ruta_excel, observaciones, men) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                             (numero_oficial, tf_manual, obra_manual, ceco_manual, quien_manual, fuente_guardado, datetime.now(), flim.date(), neto_total_carrito, peso_total_carrito, 0, 0, 'Pendiente', 'En Proceso', 'Normal', "Generado Manualmente", comentarios_manual, men_manual))
-                    pid = c.lastrowid
+                    # 1. 🚀 Insertar el pedido con cláusula RETURNING para capturar el ID real en Postgres
+        query_insert_pedido_manual = """
+        INSERT INTO pedidos 
+        (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo) 
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+        RETURNING id
+        """
+        
+        c.execute(query_insert_pedido_manual, (
+            str(numero_oficial), tf_manual, obra_manual, ceco_manual, quien_manual, fuente_guardado, 
+            datetime.now(), flim.date(), float(neto_total_carrito), float(peso_total_carrito), 
+            0.0, 0.0, 'Pendiente', 'En Proceso'
+        ))
+        
+        # 🔥 CORRECCIÓN 1: Captura del ID nativa en PostgreSQL
+        pid = c.fetchone()[0]
 
-                    for r in st.session_state.carrito_admin:
-                        c.execute("INSERT INTO items_pedido (pedido_id, item_numero, descripcion, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio, detalles) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                                 (pid, r['item_num'], r['Descripción'], r['Cantidad'], r['Kg'], r['Espesor'], r['material'], r['unidad_cobro'], r['precio_unitario'], r['total_linea'], r['origen_precio'], r['Detalles/Medidas']))
-                    
-                    conn.commit(); conn.close()
-                    st.session_state.carrito_admin = [] 
-                    st.success(f"✅ ¡Pedido manual creado como {numero_oficial} y enviado a la cola de fabricación!")
+        # 2. 🦾 Bucle de ítems corregido con placeholders %s de Postgres
+        query_insert_item_manual = """
+        INSERT INTO items_pedido 
+        (pedido_id, item_numero, descripcion, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio, detalles) 
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+
+        for r in st.session_state.carrito_admin:
+            # Forzamos la extracción segura de detalles/medidas para que el PDF las lea
+            detalles_manuales = str(r.get('Detalles/Medidas', r.get('detalles', ''))).strip()
+            if detalles_manuales == 'None' or detalles_manuales == 'nan': 
+                detalles_manuales = ""
+
+            # 🔥 CORRECCIÓN 2: Ejecución limpia con marcadores %s
+            c.execute(query_insert_item_manual, (
+                pid, str(r['item_num']), str(r['Descripción']), int(r['Cantidad']), 
+                float(r['Kg']), float(r['Espesor']), str(r['material']), str(r['unidad_cobro']), 
+                float(r['precio_unitario']), float(r['total_linea']), str(r['origen_precio']), detalles_manuales
+            ))
+
+            conn.commit()
+            # ... debajo de tu línea 978: conn.close()
+            
+            st.session_state.carrito_admin = []
+            st.success(f"📥 ¡Pedido manual creado como {numero_oficial} y enviado a la cola de fabricación!")
+            st.rerun()
         else:
             st.info("No hay piezas en este pedido todavía.")
 
