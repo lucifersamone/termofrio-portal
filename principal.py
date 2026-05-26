@@ -17,10 +17,15 @@ from fpdf import FPDF
 import psycopg2
 import re
 
-# --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.3 - COMPLETO Y UNIFICADO) ---
+# --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.4 - COMPLETO Y ALINEADO) ---
 class SQLiteToPostgresCursor:
     def __init__(self, pg_cursor):
         self.pg_cursor = pg_cursor
+        self._lastrowid = None
+        
+    @property
+    def lastrowid(self):
+        return self._lastrowid
         
     def execute(self, query, vars=None):
         if vars is not None:
@@ -36,10 +41,23 @@ class SQLiteToPostgresCursor:
         query = re.sub(r"(?i)\bas\s+'([^']+)'", r'AS "\1"', query)
         query = query.replace('[', '"').replace(']', '"')
         query = re.sub(r'(?i)\bpedidos\b', 'pedidostf', query)
-        return self.pg_cursor.execute(query, vars)
+        
+        is_insert = query.strip().upper().startswith("INSERT")
+        if is_insert and "RETURNING" not in query.upper():
+            query = query.rstrip('; ') + " RETURNING id"
+            
+        res = self.pg_cursor.execute(query, vars)
+        
+        if is_insert:
+            try:
+                row = self.pg_cursor.fetchone()
+                if row:
+                    self._lastrowid = row[0]
+            except Exception:
+                self._lastrowid = None
+        return res
         
     def executemany(self, query, vars_list=None):
-        # Soporte para inserciones masivas de ítems desde el Excel
         if vars_list is not None:
             query = query.replace('?', '%s')
             cleaned_vars_list = []
@@ -84,6 +102,7 @@ class SupabaseSQLAdapter:
     def __getattr__(self, name):
         return getattr(self.conn, name)
 
+# --- LA FUNCIÓN QUE RECONOCERÁ TU CÓDIGO ---
 def get_connection(): 
     return SupabaseSQLAdapter()
     

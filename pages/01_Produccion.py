@@ -15,44 +15,68 @@ import matplotlib.patches as patches
 import psycopg2
 import re
 
-# --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.0 ENFIERRADA) ---
+# --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.4 - SOPORTE LASTROWID PARA EXCEL) ---
 class SQLiteToPostgresCursor:
     def __init__(self, pg_cursor):
         self.pg_cursor = pg_cursor
+        self._lastrowid = None
+        
+    @property
+    def lastrowid(self):
+        return self._lastrowid
         
     def execute(self, query, vars=None):
-        # 1. Traducir variables: '?' de SQLite a '%s' de Postgres
         if vars is not None:
             query = query.replace('?', '%s')
+            cleaned_vars = []
+            for v in vars:
+                if hasattr(v, 'item') and callable(getattr(v, 'item')):
+                    cleaned_vars.append(v.item())
+                else:
+                    cleaned_vars.append(v)
+            vars = tuple(cleaned_vars)
             
-        # 2. Reparar comillas en alias: Cambia AS 'N° Pedido' por AS "N° Pedido"
         query = re.sub(r"(?i)\bas\s+'([^']+)'", r'AS "\1"', query)
-        
-        # 3. Reparar corchetes: Cambia [tabla] o [columna] por comillas dobles
         query = query.replace('[', '"').replace(']', '"')
+        query = re.sub(r'(?i)\bpedidos\b', 'pedidostf', query)
         
-        return self.pg_cursor.execute(query, vars)
+        # 🔥 TRUCO MAESTRO: Intercepta los INSERT para capturar el ID generado en Supabase
+        is_insert = query.strip().upper().startswith("INSERT")
+        if is_insert and "RETURNING" not in query.upper():
+            query = query.rstrip('; ') + " RETURNING id"
+            
+        res = self.pg_cursor.execute(query, vars)
+        
+        if is_insert:
+            try:
+                row = self.pg_cursor.fetchone()
+                if row:
+                    self._lastrowid = row[0]
+            except Exception:
+                self._lastrowid = None
+        return res
+        
+    def executemany(self, query, vars_list=None):
+        if vars_list is not None:
+            query = query.replace('?', '%s')
+            cleaned_vars_list = []
+            for vars in vars_list:
+                cleaned_vars = []
+                for v in vars:
+                    if hasattr(v, 'item') and callable(getattr(v, 'item')):
+                        cleaned_vars.append(v.item())
+                    else:
+                        cleaned_vars.append(v)
+                cleaned_vars_list.append(tuple(cleaned_vars))
+            vars_list = cleaned_vars_list
+            
+        query = re.sub(r"(?i)\bas\s+'([^']+)'", r'AS "\1"', query)
+        query = query.replace('[', '"').replace(']', '"')
+        query = re.sub(r'(?i)\bpedidos\b', 'pedidostf', query)
+        return self.pg_cursor.executemany(query, vars_list)
         
     def __getattr__(self, name):
         return getattr(self.pg_cursor, name)
-
-class SupabaseSQLAdapter:
-    def __init__(self):
-        self.conn = psycopg2.connect(
-            host=st.secrets["DB_HOST"],
-            database=st.secrets["DB_NAME"],
-            user=st.secrets["DB_USER"],
-            port=st.secrets["DB_PORT"],
-            password=st.secrets["DB_PASS"]
-        )
-    def cursor(self):
-        return SQLiteToPostgresCursor(self.conn.cursor())
-    def commit(self):
-        self.conn.commit()
-    def close(self):
-        self.conn.close()
-    def __getattr__(self, name):
-        return getattr(self.conn, name)
 
 # --- LA FUNCIÓN QUE RECONOCERÁ TU CÓDIGO ---
 def get_connection(): 
