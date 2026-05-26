@@ -603,8 +603,17 @@ with tab1:
                         
                         pid = c.fetchone()[0]
                         
-                        query_item = "INSERT INTO items_pedido (pedido_id, item_numero, descripcion, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                        query_item = "INSERT INTO items_pedido (pedido_id, item_numero, descripcion, detalles, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
                         
+                        def extraer_campo(row, candidatos):
+                            for cand in candidatos:
+                                for col_name in row.index:
+                                    if str(col_name).strip().lower() == cand.lower():
+                                        val = row[col_name]
+                                        if pd.notnull(val) and str(val).strip().lower() not in ['none', 'nan', '']:
+                                            return str(val).strip()
+                            return ""
+
                         for _, r in edited_df.iterrows():
                             cant_val = int(r['cantidad']) if pd.notnull(r['cantidad']) else 0
                             peso_val = float(r['peso_total']) if pd.notnull(r['peso_total']) else 0.0
@@ -612,8 +621,52 @@ with tab1:
                             pre_val = float(r['precio_unitario']) if pd.notnull(r['precio_unitario']) else 0.0
                             tot_val = float(r['total_linea']) if pd.notnull(r['total_linea']) else 0.0
                             
+                            tipo_pieza = str(r['descripcion']).strip().lower()
+                            
+                            val_a = extraer_campo(r, ['a', 'lado_a', 'lado a', 'entrada_a', 'entrada a', 'dim_a'])
+                            val_b = extraer_campo(r, ['b', 'lado_b', 'lado b', 'entrada_b', 'entrada b', 'dim_b'])
+                            val_c = extraer_campo(r, ['c', 'lado_c', 'lado c', 'salida_a', 'salida a', 'dim_c'])
+                            val_d = extraer_campo(r, ['d', 'lado_d', 'lado d', 'salida_b', 'salida b', 'dim_d'])
+                            val_h = extraer_campo(r, ['h', 'largo', 'altura', 'largo_h', 'largo h', 'largo (m)', 'largo [m]'])
+                            val_ang = extraer_campo(r, ['angulo', 'ángulo', 'ang', 'angulo_°'])
+                            val_casq = extraer_campo(r, ['casquetes', 'casq', 'n_casquetes', 'n° casquetes'])
+                            val_sim = extraer_campo(r, ['simetria', 'simetría', 'sim'])
+                            val_ue = extraer_campo(r, ['union_entrada', 'union entrada', 'union_e', 'ue', 'unión entrada'])
+                            val_us = extraer_campo(r, ['union_salida', 'union salida', 'union_s', 'us', 'unión salida'])
+                            
+                            dims_str = []
+                            if val_a: dims_str.append(f"A:{val_a}cm")
+                            if val_b: dims_str.append(f"B:{val_b}cm")
+                            
+                            if "transform" in tipo_pieza or "difusora" in tipo_pieza or "pantalon" in tipo_pieza:
+                                if val_c: dims_str.append(f"C:{val_c}cm")
+                                if val_d: dims_str.append(f"D:{val_d}cm")
+                            elif "pleno" in tipo_pieza:
+                                if val_c: dims_str.append(f"C:{val_c}cm")
+                            
+                            if val_h: 
+                                try:
+                                    if float(val_h.replace(',', '.')) < 3.0:
+                                        dims_str.append(f"H:{val_h}m")
+                                    else:
+                                        dims_str.append(f"H:{val_h}cm")
+                                except:
+                                    dims_str.append(f"H:{val_h}cm")
+
+                            partes_str = []
+                            if dims_str: partes_str.append("Dim: " + " ".join(dims_str))
+                            if val_ang: partes_str.append(f"Ang: {val_ang}°")
+                            if val_casq: partes_str.append(f"Casq: {val_casq}")
+                            
+                            if val_ue or val_us:
+                                union_final = f"{val_ue} / {val_us}".strip(" /")
+                                partes_str.append(f"Unión: {union_final}")
+                            if val_sim: partes_str.append(f"Simetría: {val_sim}")
+                            
+                            detalles_finales = " | ".join(partes_str)
+                            
                             c.execute(query_item, (
-                                pid, str(r['item_num']).strip(), str(r['descripcion']).strip(), cant_val,
+                                pid, str(r['item_num']).strip(), str(r['descripcion']).strip(), detalles_finales, cant_val,
                                 peso_val, esp_val, str(r['material']).strip(), str(r['unidad_cobro']).strip(),
                                 pre_val, tot_val, str(r['origen_precio']).strip()
                             ))
@@ -932,22 +985,27 @@ with tab2:
         # 🎯 ENRUTADOR EXCLUSIVO DE CASOS (INFALIBLE)
         st.markdown("##### 🖨️ Documentos para Taller (Impresión)")
         
-        # 🛡️ NUEVA LÓGICA: Revisar si hay un Excel en la Base de Datos
         ruta_ex = str(fila_pedido_ver.get('ruta_excel', '')).strip()
         if ruta_ex in ['None', 'nan']: ruta_ex = ''
         
-        # Si la ruta termina en formato Excel, es carga masiva 100% seguro.
         es_masiva = ruta_ex.endswith(('.xlsx', '.xls', '.xlsm')) or "excel" in fuente_pedido or "masiva" in fuente_pedido
 
         if es_masiva:
             # --- CASO MASIVO ---
             st.info("📦 **Pedido subido en Excel (Carga Masiva):** Formato de Ingeniería Detectado.")
             
+            # Mostrar desglose de piezas desde la base de datos siempre
+            if not df_items_raw.empty:
+                df_items_display = df_items_raw[['item_numero', 'descripcion', 'detalles', 'cantidad', 'espesor', 'peso_total']].rename(columns={
+                    'item_numero': 'Ítem', 'descripcion': 'Pieza', 'detalles': 'Medidas y Especificaciones', 'cantidad': 'Cant.', 'espesor': 'Espesor (mm)', 'peso_total': 'Peso (Kg)'
+                })
+                st.dataframe(df_items_display, use_container_width=True, hide_index=True)
+            
             if ruta_ex != "Generado Manualmente" and ruta_ex != "" and os.path.exists(ruta_ex):
                 with open(ruta_ex, "rb") as f:
                     st.download_button("📥 Descargar Excel Original (OT-83)", f, file_name=os.path.basename(ruta_ex), type="primary", key="btn_descarga_excel_masiva_final")
             else:
-                st.warning("⚠️ La planilla Excel original no se encuentra guardada en el servidor (fue reemplazada o no se guardó la ruta).")
+                st.warning("💡 *La planilla Excel original (.xlsx) ya no está en el disco temporal del servidor debido a un reinicio automático, pero arriba puedes ver y copiar el desglose de piezas guardado permanentemente en la Base de Datos.*")
                 
         else:
             # --- CASO MANUAL ---
@@ -982,8 +1040,6 @@ with tab2:
                             st.error(f"Error al generar PDF: {e}")
             else:
                 st.error("⚠️ Este pedido está vacío. Se guardó sin agregar piezas válidas al carrito.")
-        
-        st.divider()
         
         st.divider()
 
