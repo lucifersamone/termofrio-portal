@@ -982,7 +982,7 @@ with tab2:
             })
             st.dataframe(df_items_display, use_container_width=True, hide_index=True)
             
-            if st.button("📄 Generar Orden de Trabajo (PDF)", key="btn_ot_interna", type="primary"):
+            if st.button("📄 Generar Orden de Trabajo (PDF)", key="btn_ot_interna_2", type="primary"):
                 with st.spinner("Dibujando Orden de Trabajo..."):
                     ruta_pdf_ot = generar_pdf_manual(
                         pedido_num=fila_pedido_ver['num_pedido'],
