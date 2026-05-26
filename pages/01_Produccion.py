@@ -589,6 +589,64 @@ with tab1:
                         with open(ruta_guardado, "wb") as f:
                             f.write(arch_ped.getvalue())
                             
+                        # 🔥 MOTOR EXTRACTOR NATIVO: Lee el Excel tal como lo hace un supervisor
+                        diccionario_detalles = {}
+                        try:
+                            df_raw = pd.read_excel(ruta_guardado, sheet_name=0, header=None)
+                            start_row = 28
+                            for i, row_xls in df_raw.iterrows():
+                                if str(row_xls[0]).strip().upper() == "Nº" and str(row_xls[5]).strip().upper() == "DESCRIPCION":
+                                    start_row = i + 1
+                                    break
+                                    
+                            for i in range(start_row, len(df_raw)):
+                                row_xls = df_raw.iloc[i]
+                                item_id = row_xls[0]
+                                if pd.isna(item_id) or str(item_id).strip() == "": continue
+                                try: item_num = int(item_id)
+                                except: continue
+                                    
+                                tipo_pieza = str(row_xls[5]).strip().lower()
+                                
+                                # Columnas exactas de la planilla Termofrio: J(9), K(10), S(18), AA(26), AC(28)...
+                                val_a, val_b, val_sim = row_xls[9], row_xls[10], row_xls[13]
+                                val_c, val_d, val_h = row_xls[16], row_xls[17], row_xls[18]
+                                val_ang, val_casq = row_xls[21], row_xls[22]
+                                val_ue, val_us = row_xls[26], row_xls[28]
+                                
+                                dims_str = []
+                                if pd.notna(val_a) and str(val_a).strip(): dims_str.append(f"A:{str(val_a).strip()}cm")
+                                if pd.notna(val_b) and str(val_b).strip(): dims_str.append(f"B:{str(val_b).strip()}cm")
+                                
+                                # Inteligencia de piezas especiales
+                                if "transform" in tipo_pieza or "difusora" in tipo_pieza or "pantalon" in tipo_pieza:
+                                    if pd.notna(val_c) and str(val_c).strip(): dims_str.append(f"C:{str(val_c).strip()}cm")
+                                    if pd.notna(val_d) and str(val_d).strip(): dims_str.append(f"D:{str(val_d).strip()}cm")
+                                elif "pleno" in tipo_pieza:
+                                    if pd.notna(val_c) and str(val_c).strip(): dims_str.append(f"C:{str(val_c).strip()}cm")
+                                    
+                                if pd.notna(val_h) and str(val_h).strip():
+                                    try:
+                                        vh = float(val_h)
+                                        dims_str.append(f"H:{vh}m" if vh < 3.0 else f"H:{vh}cm")
+                                    except:
+                                        dims_str.append(f"H:{str(val_h).strip()}cm")
+                                        
+                                partes_str = []
+                                if dims_str: partes_str.append("Dim: " + " ".join(dims_str))
+                                if pd.notna(val_ang) and str(val_ang).strip(): partes_str.append(f"Ang: {str(val_ang).strip()}°")
+                                if pd.notna(val_casq) and str(val_casq).strip(): partes_str.append(f"Casq: {str(val_casq).strip()}")
+                                
+                                ue = str(val_ue).strip() if pd.notna(val_ue) else ""
+                                us = str(val_us).strip() if pd.notna(val_us) else ""
+                                if ue or us: partes_str.append(f"Unión: {ue} / {us}".strip(" /"))
+                                if pd.notna(val_sim) and str(val_sim).strip(): partes_str.append(f"Simetría: {str(val_sim).strip()}")
+                                
+                                diccionario_detalles[item_num] = " | ".join(partes_str)
+                        except Exception as e:
+                            st.error(f"Error interno leyendo medidas del Excel: {e}")
+
+                        # CONTINÚA EL GUARDADO EN LA DB
                         conn = get_connection()
                         c = conn.cursor()
                         flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
@@ -602,18 +660,8 @@ with tab1:
                         ))
                         
                         pid = c.fetchone()[0]
-                        
                         query_item = "INSERT INTO items_pedido (pedido_id, item_numero, descripcion, detalles, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
                         
-                        def extraer_campo(row, candidatos):
-                            for cand in candidatos:
-                                for col_name in row.index:
-                                    if str(col_name).strip().lower() == cand.lower():
-                                        val = row[col_name]
-                                        if pd.notnull(val) and str(val).strip().lower() not in ['none', 'nan', '']:
-                                            return str(val).strip()
-                            return ""
-
                         for _, r in edited_df.iterrows():
                             cant_val = int(r['cantidad']) if pd.notnull(r['cantidad']) else 0
                             peso_val = float(r['peso_total']) if pd.notnull(r['peso_total']) else 0.0
@@ -621,49 +669,12 @@ with tab1:
                             pre_val = float(r['precio_unitario']) if pd.notnull(r['precio_unitario']) else 0.0
                             tot_val = float(r['total_linea']) if pd.notnull(r['total_linea']) else 0.0
                             
-                            tipo_pieza = str(r['descripcion']).strip().lower()
+                            # 🪄 ¡Magia! Asignamos las medidas perfectas extraídas al ítem correspondiente
+                            item_key = -1
+                            try: item_key = int(r['item_num'])
+                            except: pass
                             
-                            val_a = extraer_campo(r, ['a', 'lado_a', 'lado a', 'entrada_a', 'entrada a', 'dim_a'])
-                            val_b = extraer_campo(r, ['b', 'lado_b', 'lado b', 'entrada_b', 'entrada b', 'dim_b'])
-                            val_c = extraer_campo(r, ['c', 'lado_c', 'lado c', 'salida_a', 'salida a', 'dim_c'])
-                            val_d = extraer_campo(r, ['d', 'lado_d', 'lado d', 'salida_b', 'salida b', 'dim_d'])
-                            val_h = extraer_campo(r, ['h', 'largo', 'altura', 'largo_h', 'largo h', 'largo (m)', 'largo [m]'])
-                            val_ang = extraer_campo(r, ['angulo', 'ángulo', 'ang', 'angulo_°'])
-                            val_casq = extraer_campo(r, ['casquetes', 'casq', 'n_casquetes', 'n° casquetes'])
-                            val_sim = extraer_campo(r, ['simetria', 'simetría', 'sim'])
-                            val_ue = extraer_campo(r, ['union_entrada', 'union entrada', 'union_e', 'ue', 'unión entrada'])
-                            val_us = extraer_campo(r, ['union_salida', 'union salida', 'union_s', 'us', 'unión salida'])
-                            
-                            dims_str = []
-                            if val_a: dims_str.append(f"A:{val_a}cm")
-                            if val_b: dims_str.append(f"B:{val_b}cm")
-                            
-                            if "transform" in tipo_pieza or "difusora" in tipo_pieza or "pantalon" in tipo_pieza:
-                                if val_c: dims_str.append(f"C:{val_c}cm")
-                                if val_d: dims_str.append(f"D:{val_d}cm")
-                            elif "pleno" in tipo_pieza:
-                                if val_c: dims_str.append(f"C:{val_c}cm")
-                            
-                            if val_h: 
-                                try:
-                                    if float(val_h.replace(',', '.')) < 3.0:
-                                        dims_str.append(f"H:{val_h}m")
-                                    else:
-                                        dims_str.append(f"H:{val_h}cm")
-                                except:
-                                    dims_str.append(f"H:{val_h}cm")
-
-                            partes_str = []
-                            if dims_str: partes_str.append("Dim: " + " ".join(dims_str))
-                            if val_ang: partes_str.append(f"Ang: {val_ang}°")
-                            if val_casq: partes_str.append(f"Casq: {val_casq}")
-                            
-                            if val_ue or val_us:
-                                union_final = f"{val_ue} / {val_us}".strip(" /")
-                                partes_str.append(f"Unión: {union_final}")
-                            if val_sim: partes_str.append(f"Simetría: {val_sim}")
-                            
-                            detalles_finales = " | ".join(partes_str)
+                            detalles_finales = diccionario_detalles.get(item_key, "")
                             
                             c.execute(query_item, (
                                 pid, str(r['item_num']).strip(), str(r['descripcion']).strip(), detalles_finales, cant_val,
@@ -944,7 +955,7 @@ with tab2:
         # --- VISOR DE DETALLES Y MEDIDAS EN PANTALLA ---
         st.markdown("---")
         st.markdown("#### 🔍 Ver Detalle y Medidas de un Pedido")
-        st.caption("Selecciona un pedido para revisar sus especificaciones o descargar su documento oficial de taller.")
+        st.caption("Selecciona un pedido para revisar sus especificaciones o generar el PDF oficial de taller.")
         col_b1, col_b2 = st.columns([1, 2])
         
         for c in ['num_pedido', 'obra_codigo', 'id']:
@@ -982,65 +993,47 @@ with tab2:
             if obs_txt: msj += f"**📝 Comentarios:** {obs_txt}"
             st.warning(msj)
 
-        # 🎯 ENRUTADOR EXCLUSIVO DE CASOS (INFALIBLE)
-        st.markdown("##### 🖨️ Documentos para Taller (Impresión)")
+        # 🎯 VISOR UNIFICADO: Tabla en pantalla y botón único de PDF
+        st.markdown("##### 🖨️ Documento Oficial para Taller (Impresión)")
         
         ruta_ex = str(fila_pedido_ver.get('ruta_excel', '')).strip()
-        if ruta_ex in ['None', 'nan']: ruta_ex = ''
-        
         es_masiva = ruta_ex.endswith(('.xlsx', '.xls', '.xlsm')) or "excel" in fuente_pedido or "masiva" in fuente_pedido
-
-        if es_masiva:
-            # --- CASO MASIVO ---
-            st.info("📦 **Pedido subido en Excel (Carga Masiva):** Formato de Ingeniería Detectado.")
-            
-            # Mostrar desglose de piezas desde la base de datos siempre
-            if not df_items_raw.empty:
-                df_items_display = df_items_raw[['item_numero', 'descripcion', 'detalles', 'cantidad', 'espesor', 'peso_total']].rename(columns={
-                    'item_numero': 'Ítem', 'descripcion': 'Pieza', 'detalles': 'Medidas y Especificaciones', 'cantidad': 'Cant.', 'espesor': 'Espesor (mm)', 'peso_total': 'Peso (Kg)'
-                })
-                st.dataframe(df_items_display, use_container_width=True, hide_index=True)
-            
-            if ruta_ex != "Generado Manualmente" and ruta_ex != "" and os.path.exists(ruta_ex):
-                with open(ruta_ex, "rb") as f:
-                    st.download_button("📥 Descargar Excel Original (OT-83)", f, file_name=os.path.basename(ruta_ex), type="primary", key="btn_descarga_excel_masiva_final")
-            else:
-                st.warning("💡 *La planilla Excel original (.xlsx) ya no está en el disco temporal del servidor debido a un reinicio automático, pero arriba puedes ver y copiar el desglose de piezas guardado permanentemente en la Base de Datos.*")
-                
-        else:
-            # --- CASO MANUAL ---
-            st.success("📝 **Pedido por Carga Manual**")
-            
-            if not df_items_raw.empty:
-                df_items_display = df_items_raw[['item_numero', 'descripcion', 'detalles', 'cantidad', 'espesor', 'peso_total']].rename(columns={
-                    'item_numero': 'Ítem', 'descripcion': 'Pieza', 'detalles': 'Medidas y Especificaciones', 'cantidad': 'Cant.', 'espesor': 'Espesor (mm)', 'peso_total': 'Peso (Kg)'
-                })
-                st.dataframe(df_items_display, use_container_width=True, hide_index=True)
-                
-                if st.button("📄 Generar Orden de Trabajo (PDF)", key="btn_ot_interna_manual_final", type="primary"):
-                    with st.spinner("Generando Orden de Trabajo..."):
-                        try:
-                            ruta_pdf_ot = generar_pdf_manual(
-                                pedido_num=fila_pedido_ver['num_pedido'],
-                                tf=fila_pedido_ver['tf'],
-                                obra=fila_pedido_ver['obra_codigo'],
-                                ceco=fila_pedido_ver['ceco'],
-                                solicitante=fila_pedido_ver['quien_envia'],
-                                items_df=df_items_raw, 
-                                kg_reales=0, 
-                                fuente=fila_pedido_ver['fuente'],
-                                observaciones=obs_txt,
-                                tipo="interna",
-                                men=men_txt
-                            )
-                            if ruta_pdf_ot:
-                                with open(ruta_pdf_ot, "rb") as f:
-                                    st.download_button("📥 Descargar PDF Orden de Trabajo", f, file_name=f"Orden_Trabajo_{fila_pedido_ver['num_pedido']}.pdf", key="btn_download_ot_pdf_manual_ok_final")
-                        except Exception as e:
-                            st.error(f"Error al generar PDF: {e}")
-            else:
-                st.error("⚠️ Este pedido está vacío. Se guardó sin agregar piezas válidas al carrito.")
         
+        if es_masiva:
+            st.info("📦 **Pedido subido en Excel (Carga Masiva):** Las piezas han sido transformadas automáticamente al formato de taller.")
+        else:
+            st.success("📝 **Pedido por Carga Manual:** Digitado directamente en plataforma.")
+
+        if not df_items_raw.empty:
+            df_items_display = df_items_raw[['item_numero', 'descripcion', 'detalles', 'cantidad', 'espesor', 'peso_total']].rename(columns={
+                'item_numero': 'Ítem', 'descripcion': 'Pieza', 'detalles': 'Medidas y Especificaciones', 'cantidad': 'Cant.', 'espesor': 'Espesor (mm)', 'peso_total': 'Peso (Kg)'
+            })
+            st.dataframe(df_items_display, use_container_width=True, hide_index=True)
+            
+            if st.button("📄 Generar Orden de Trabajo Unificada (PDF)", key="btn_ot_interna_unificada", type="primary"):
+                with st.spinner("Generando documento PDF oficial con medidas..."):
+                    try:
+                        ruta_pdf_ot = generar_pdf_manual(
+                            pedido_num=fila_pedido_ver['num_pedido'],
+                            tf=fila_pedido_ver['tf'],
+                            obra=fila_pedido_ver['obra_codigo'],
+                            ceco=fila_pedido_ver['ceco'],
+                            solicitante=fila_pedido_ver['quien_envia'],
+                            items_df=df_items_raw, 
+                            kg_reales=0, 
+                            fuente=fila_pedido_ver['fuente'],
+                            observaciones=obs_txt,
+                            tipo="interna",
+                            men=men_txt
+                        )
+                        if ruta_pdf_ot:
+                            with open(ruta_pdf_ot, "rb") as f:
+                                st.download_button("📥 Descargar PDF Orden de Trabajo", f, file_name=f"Orden_Trabajo_{fila_pedido_ver['num_pedido']}.pdf", key="btn_descarga_pdf_final_ok")
+                    except Exception as e:
+                        st.error(f"Error al generar PDF: {e}")
+        else:
+            st.error("⚠️ Este pedido está vacío. Se guardó sin agregar piezas válidas al carrito.")
+            
         st.divider()
 
         st.subheader("🚀 Fila de Producción y Urgencias")
