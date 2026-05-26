@@ -554,90 +554,93 @@ with tab1:
     t_excel, t_manual = st.tabs(["📁 Carga Rápida por Excel", "✍️ Ingreso Manual de Piezas"])
     
     with t_excel:
-        mats_db = get_materiales_disponibles()
-        material_sel = st.selectbox("🛠️ Material del Pedido (Excel)", mats_db, key="mat_excel_admin")
-        arch_ped = st.file_uploader("Sube Excel Pedido", type=["xls", "xlsx", "xlsm"])
-        if arch_ped:
-            enc, df_det = procesar_pedido(arch_ped, get_precios_df(), material_sel)
-            if df_det.empty: st.error("❌ Sin items válidos detectados.")
-            else:
-                ceco_bd, obra_bd = buscar_datos_por_tf(enc['tf'])
-                c1, c2, c3, c4 = st.columns(4)
-                with c1: st.text_input("TF Detectado", value=enc['tf'], disabled=True)
-                with c2: obra_input = st.text_input("Obra Oficial", value=obra_bd if obra_bd else enc['obra'])
-                with c3: ceco_input = st.text_input("CECO Oficial", value=ceco_bd if ceco_bd else "")
-                with c4: m2_input = st.number_input("M2 Totales", value=enc['m2'], format="%.2f")
-                
-                c5, c6 = st.columns(2)
-                with c5: quien = st.text_input("Solicitante", value=enc['envia'])
-                with c6: fuente = st.text_input("Fuente / Etiqueta", value="General")
-                
-                edited_df = st.data_editor(df_det, use_container_width=True, num_rows="dynamic")
-                neto = edited_df['total_linea'].sum(); peso = edited_df['peso_total'].sum()
-                st.markdown(f"### 💰 Neto: $ {neto:,.0f} | ⚖️ Peso: {peso:,.1f} Kg")
-                
-        if st.button("📥 Guardar Pedido (Excel)", type="primary"):
+            mats_db = get_materiales_disponibles()
+            material_sel = st.selectbox("🛠️ Material del Pedido (Excel)", mats_db, key="mat_excel_admin")
+            arch_ped = st.file_uploader("Sube Excel Pedido", type=["xls", "xlsx", "xlsm"])
             
-            numero_oficial = obtener_siguiente_correlativo_obra(obra_input, enc['tf'])
-            nombre_seguro = str(numero_oficial).replace("/", "-").replace("\\", "-")
-            fecha_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-            ruta_guardado = os.path.join(CARPETA_EXCELS, f"Pedido_Local_{nombre_seguro}_{fecha_str}.xlsx")
-            
-            with open(ruta_guardado, "wb") as f:
-                f.write(arch_ped.getvalue())
-                
-            conn = get_connection()
-            c = conn.cursor()
-            flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
-            
-            query_ped = "INSERT INTO pedidos (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo, nivel_urgencia, ruta_excel, observaciones, men) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id"
-            
-            c.execute(query_ped, (
-                str(numero_oficial).strip(), enc['tf'], str(obra_input).strip(), str(ceco_input).strip(), 
-                quien, fuente, datetime.now(), flim.date(), float(neto), float(peso), 
-                0.0, float(m2_input), 'Pendiente', 'En Proceso', 'Normal', ruta_guardado, "", ""
-            ))
-            
-            pid = c.fetchone()[0]
-            
-            query_item = "INSERT INTO items_pedido (pedido_id, item_numero, descripcion, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
-            
-            for _, r in edited_df.iterrows():
-                cant_val = int(r['cantidad']) if pd.notnull(r['cantidad']) else 0
-                peso_val = float(r['peso_total']) if pd.notnull(r['peso_total']) else 0.0
-                esp_val = float(r['espesor']) if pd.notnull(r['espesor']) else 0.0
-                pre_val = float(r['precio_unitario']) if pd.notnull(r['precio_unitario']) else 0.0
-                tot_val = float(r['total_linea']) if pd.notnull(r['total_linea']) else 0.0
-                
-                c.execute(query_item, (
-                    pid, str(r['item_num']).strip(), str(r['descripcion']).strip(), cant_val,
-                    peso_val, esp_val, str(r['material']).strip(), str(r['unidad_cobro']).strip(),
-                    pre_val, tot_val, str(r['origen_precio']).strip()
-                ))
-                
-            st.success(f"¡Guardado correctamente en DB y Bóveda como el pedido {numero_oficial}!")
-            st.rerun()
+            if arch_ped:
+                enc, df_det = procesar_pedido(arch_ped, get_precios_df(), material_sel)
+                if df_det.empty: 
+                    st.error("❌ Sin items válidos detectados.")
+                else:
+                    ceco_bd, obra_bd = buscar_datos_por_tf(enc['tf'])
+                    c1, c2, c3, c4 = st.columns(4)
+                    with c1: st.text_input("TF Detectado", value=enc['tf'], disabled=True)
+                    with c2: obra_input = st.text_input("Obra Oficial", value=obra_bd if obra_bd else enc['obra'])
+                    with c3: ceco_input = st.text_input("CECO Oficial", value=ceco_bd if ceco_bd else "")
+                    with c4: m2_input = st.number_input("M2 Totales", value=enc['m2'], format="%.2f")
+                    
+                    c5, c6 = st.columns(2)
+                    with c5: quien = st.text_input("Solicitante", value=enc['envia'])
+                    with c6: fuente = st.text_input("Fuente / Etiqueta", value="General")
+                    
+                    edited_df = st.data_editor(df_det, use_container_width=True, num_rows="dynamic")
+                    neto = edited_df['total_linea'].sum(); peso = edited_df['peso_total'].sum()
+                    st.markdown(f"### 💰 Neto: $ {neto:,.0f} | ⚖️ Peso: {peso:,.1f} Kg")
+                    
+                    # 🔥 AHORA EL BOTÓN ESTÁ PROTEGIDO AQUÍ ADENTRO 🔥
+                    if st.button("📥 Guardar Pedido (Excel)", type="primary"):
+                        
+                        numero_oficial = obtener_siguiente_correlativo_obra(obra_input, enc['tf'])
+                        nombre_seguro = str(numero_oficial).replace("/", "-").replace("\\", "-")
+                        fecha_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        ruta_guardado = os.path.join(CARPETA_EXCELS, f"Pedido_Local_{nombre_seguro}_{fecha_str}.xlsx")
+                        
+                        with open(ruta_guardado, "wb") as f:
+                            f.write(arch_ped.getvalue())
+                            
+                        conn = get_connection()
+                        c = conn.cursor()
+                        flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
+                        
+                        query_ped = "INSERT INTO pedidos (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo, nivel_urgencia, ruta_excel, observaciones, men) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id"
+                        
+                        c.execute(query_ped, (
+                            str(numero_oficial).strip(), enc['tf'], str(obra_input).strip(), str(ceco_input).strip(), 
+                            quien, fuente, datetime.now(), flim.date(), float(neto), float(peso), 
+                            0.0, float(m2_input), 'Pendiente', 'En Proceso', 'Normal', ruta_guardado, "", ""
+                        ))
+                        
+                        pid = c.fetchone()[0]
+                        
+                        query_item = "INSERT INTO items_pedido (pedido_id, item_numero, descripcion, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                        
+                        for _, r in edited_df.iterrows():
+                            cant_val = int(r['cantidad']) if pd.notnull(r['cantidad']) else 0
+                            peso_val = float(r['peso_total']) if pd.notnull(r['peso_total']) else 0.0
+                            esp_val = float(r['espesor']) if pd.notnull(r['espesor']) else 0.0
+                            pre_val = float(r['precio_unitario']) if pd.notnull(r['precio_unitario']) else 0.0
+                            tot_val = float(r['total_linea']) if pd.notnull(r['total_linea']) else 0.0
+                            
+                            c.execute(query_item, (
+                                pid, str(r['item_num']).strip(), str(r['descripcion']).strip(), cant_val,
+                                peso_val, esp_val, str(r['material']).strip(), str(r['unidad_cobro']).strip(),
+                                pre_val, tot_val, str(r['origen_precio']).strip()
+                            ))
+                            
+                        st.success(f"¡Guardado correctamente en DB y Bóveda como el pedido {numero_oficial}!")
+                        st.rerun()
 
-        with t_manual:
-            if 'carrito_admin' not in st.session_state:
-                st.session_state.carrito_admin = []
+            with t_manual:
+                if 'carrito_admin' not in st.session_state:
+                    st.session_state.carrito_admin = []
 
-        st.info("Formulario Inteligente: Selecciona la pieza y el sistema solo te pedirá las dimensiones necesarias.")
+            st.info("Formulario Inteligente: Selecciona la pieza y el sistema solo te pedirá las dimensiones necesarias.")
         
-        df_obras_m = get_obras_ceco_df()
-        lista_obras = ["Seleccione Obra..."] + df_obras_m['nombre'].tolist() if not df_obras_m.empty else ["Seleccione Obra..."]
+            df_obras_m = get_obras_ceco_df()
+            lista_obras = ["Seleccione Obra..."] + df_obras_m['nombre'].tolist() if not df_obras_m.empty else ["Seleccione Obra..."]
         
-        col_m1, col_m2, col_m3 = st.columns(3)
-        with col_m1:
-            tf_manual = st.text_input("Código TF ó CC (Ej: 13655 o CC02)")
+            col_m1, col_m2, col_m3 = st.columns(3)
+            with col_m1:
+                tf_manual = st.text_input("Código TF ó CC (Ej: 13655 o CC02)")
             ceco_auto, obra_auto = buscar_datos_por_tf(tf_manual)
             index_obra = 0
             if obra_auto and obra_auto in lista_obras: index_obra = lista_obras.index(obra_auto)
             obra_manual = st.selectbox("🏗️ Obra Destino", lista_obras + ["Otra (Escribir manual)"], index=index_obra)
             if obra_manual == "Otra (Escribir manual)": obra_manual = st.text_input("Escribir nombre de la obra:", value=obra_auto if obra_auto else "")
 
-        with col_m2:
-            num_manual = st.text_input("N° de Pedido (Automático)", value="Se asignará automáticamente", disabled=True)
+            with col_m2:
+                num_manual = st.text_input("N° de Pedido (Automático)", value="Se asignará automáticamente", disabled=True)
             
             default_ceco_admin = ceco_auto if ceco_auto else ""
             if tf_manual.strip().upper() == "CC02":
@@ -646,32 +649,32 @@ with tab1:
             ceco_manual = st.text_input("CECO (Opcional)", value=default_ceco_admin)
             men_manual = st.text_input("MEN (Opcional)")
             
-        with col_m3:
-            quien_manual = st.text_input("👤 Solicitante (OBLIGATORIO)")
+            with col_m3:
+                quien_manual = st.text_input("👤 Solicitante (OBLIGATORIO)")
             correo_manual = st.text_input("📧 Correo Electrónico (OBLIGATORIO)")
             
-        col_mat, col_aisl = st.columns([2, 1])
-        with col_mat: mat_manual = st.selectbox("🛠️ Material General", get_materiales_disponibles(), key="mat_manual_admin")
-        with col_aisl:
-            st.markdown("<br>", unsafe_allow_html=True) 
+            col_mat, col_aisl = st.columns([2, 1])
+            with col_mat: mat_manual = st.selectbox("🛠️ Material General", get_materiales_disponibles(), key="mat_manual_admin")
+            with col_aisl:
+                st.markdown("<br>", unsafe_allow_html=True) 
             aislacion_manual = st.checkbox("🧊 Incluir Aislación Interior", key="chk_aisl_admin")
             forro_metalico_manual = st.checkbox("🛡️ Incluir Forro Metálico", key="chk_forro_admin")
 
-        st.divider()
-        st.markdown("#### 🛒 1. Agregar Piezas al Pedido")
+            st.divider()
+            st.markdown("#### 🛒 1. Agregar Piezas al Pedido")
         
-        df_precios_m = get_precios_df()
+            df_precios_m = get_precios_df()
         
-        c_p1, c_p2 = st.columns([3, 1])
-        with c_p1:
-            opcion_desc = st.selectbox("Nombre de la Pieza", ["Seleccione..."] + LISTA_DESCRIPCIONES + ["Otra (Escribir manual)"])
+            c_p1, c_p2 = st.columns([3, 1])
+            with c_p1:
+                opcion_desc = st.selectbox("Nombre de la Pieza", ["Seleccione..."] + LISTA_DESCRIPCIONES + ["Otra (Escribir manual)"])
             desc_m = st.text_input("Escribir nombre de la pieza:") if opcion_desc == "Otra (Escribir manual)" else (opcion_desc if opcion_desc != "Seleccione..." else "")
-        cant_m = c_p2.number_input("Cantidad", min_value=1, value=1, key="cant_m")
+            cant_m = c_p2.number_input("Cantidad", min_value=1, value=1, key="cant_m")
 
-        l_a = l_b = l_c = l_d = l_d_desv = l_h = diam = diam2 = ang = casq = sim = u_ent = u_sal = ""
+            l_a = l_b = l_c = l_d = l_d_desv = l_h = diam = diam2 = ang = casq = sim = u_ent = u_sal = ""
         
-        if desc_m:
-            req_fields = MAPEO_CAMPOS.get(desc_m, MAPEO_CAMPOS["Pieza especial"])
+            if desc_m:
+                req_fields = MAPEO_CAMPOS.get(desc_m, MAPEO_CAMPOS["Pieza especial"])
             
             with st.expander("📐 Dimensiones de Fabricación", expanded=True):
                 if any(k in req_fields for k in ["A", "B", "C", "D", "d"]):
@@ -814,9 +817,9 @@ with tab1:
                         st.rerun()
 
                         st.divider()
-        st.markdown("#### 📋 2. Resumen del Pedido Manual")
+    st.markdown("#### 📋 2. Resumen del Pedido Manual")
         
-        if len(st.session_state.carrito_admin) > 0:
+    if len(st.session_state.carrito_admin) > 0:
             df_carrito = pd.DataFrame(st.session_state.carrito_admin)
             
             st.dataframe(
@@ -866,8 +869,8 @@ with tab1:
                     conn.commit(); conn.close()
                     st.session_state.carrito_admin = [] 
                     st.success(f"✅ ¡Pedido manual creado como {numero_oficial} y enviado a la cola de fabricación!")
-        else:
-            st.info("No hay piezas en este pedido todavía.")
+            else:
+                st.info("No hay piezas en este pedido todavía.")
 
 with tab2:
     st.header("📋 Gestión de Pedidos y Urgencias")
