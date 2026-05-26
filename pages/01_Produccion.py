@@ -949,13 +949,55 @@ with tab2:
         if "excel" in fuente_pedido or "masiva" in fuente_pedido or df_items_raw.empty:
             # --- FORMATO A: CARGA MASIVA (Planilla de Ingeniería Original) ---
             st.info("📦 **Pedido por Carga Masiva:** Formato de Ingeniería Detectado.")
-            ruta_ex = str(fila_pedido_ver.get('ruta_excel', ''))
             
-            if ruta_ex != "Generado Manualmente" and pd.notna(ruta_ex) and os.path.exists(ruta_ex):
+            # 🛡️ CAMBIO CLAVE: Buscamos en 'ruta_guardado' para hacer match con la base de datos
+            ruta_ex = str(fila_pedido_ver.get('ruta_guardado', '')).strip()
+            if ruta_ex in ['None', 'nan']: ruta_ex = ''
+            
+            if ruta_ex != "Generado Manualmente" and ruta_ex != "" and os.path.exists(ruta_ex):
                 with open(ruta_ex, "rb") as f:
                     st.download_button("📥 Descargar Planilla Excel Original (OT-83)", f, file_name=os.path.basename(ruta_ex), type="primary")
             else:
                 st.warning("⚠️ La planilla Excel original no se encuentra guardada en el servidor.")
+
+        else:
+            # --- FORMATO B: INGRESO MANUAL (Orden de Trabajo Interna OT-54) ---
+            st.success("📝 **Pedido Manual:** Desplegando desglose de piezas.")
+            df_items_display = df_items_raw[['item_numero', 'descripcion', 'detalles', 'cantidad', 'espesor', 'peso_total']].rename(columns={
+                'item_numero': 'Ítem', 'descripcion': 'Pieza', 'detalles': 'Medidas y Especificaciones', 'cantidad': 'Cant.', 'espesor': 'Espesor (mm)', 'peso_total': 'Peso (Kg)'
+            })
+            st.dataframe(df_items_display, use_container_width=True, hide_index=True)
+            
+            if st.button("📄 Generar Orden de Trabajo (PDF)", key="btn_ot_interna", type="primary"):
+                with st.spinner("Dibujando Orden de Trabajo..."):
+                    ruta_pdf_ot = generar_pdf_manual(
+                        pedido_num=fila_pedido_ver['num_pedido'],
+                        tf=fila_pedido_ver['tf'],
+                        obra=fila_pedido_ver['obra_codigo'],
+                        ceco=fila_pedido_ver['ceco'],
+                        solicitante=fila_pedido_ver['quien_envia'],
+                        items_df=df_items_raw, 
+                        kg_reales=0, 
+                        fuente=fila_pedido_ver['fuente'],
+                        observaciones=obs_txt,
+                        tipo="interna",
+                        men=men_txt
+                    )
+                    if ruta_pdf_ot:
+                        with open(ruta_pdf_ot, "rb") as f:
+                            st.download_button("📥 Descargar PDF Orden de Trabajo", f, file_name=f"Orden_Trabajo_{fila_pedido_ver['num_pedido']}.pdf")
+
+        # --- Alertas Visuales (MEN y Comentarios) ---
+        alertas_ui = []
+        if "Aislación" in str(fila_pedido_ver.get('fuente', '')): alertas_ui.append("🧊 AISLACIÓN INTERIOR")
+        if "Forro Metálico" in str(fila_pedido_ver.get('fuente', '')): alertas_ui.append("🛡️ FORRO METÁLICO")
+
+        if alertas_ui or men_txt or obs_txt:
+            msj = ""
+            if alertas_ui: msj += f"**⚠️ ATENCIÓN:** Este pedido incluye **{', '.join(alertas_ui)}**\n\n"
+            if men_txt: msj += f"**👤 MEN:** {men_txt} \n"
+            if obs_txt: msj += f"**📝 Comentarios:** {obs_txt}"
+            st.warning(msj)
 
         else:
             # --- FORMATO B: INGRESO MANUAL (Orden de Trabajo Interna OT-54) ---
