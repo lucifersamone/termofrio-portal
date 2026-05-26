@@ -916,7 +916,7 @@ with tab2:
         # --- VISOR DE DETALLES Y MEDIDAS EN PANTALLA ---
         st.markdown("---")
         st.markdown("#### 🔍 Ver Detalle y Medidas de un Pedido")
-        st.caption("Selecciona un pedido para ver exactamente qué piezas y medidas trae antes de fabricar.")
+        st.caption("Selecciona un pedido para ver sus especificaciones o descargar el documento oficial de fabricación.")
         col_b1, col_b2 = st.columns([1, 2])
         
         # Limpieza preventiva de textos para el selector
@@ -929,11 +929,12 @@ with tab2:
             fila_pedido_ver = dfp[dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'] == pedido_a_ver].iloc[0]
             id_ver = str(fila_pedido_ver['id']).strip()
             num_ped_ver = str(fila_pedido_ver['num_pedido']).strip()
+            # 🛡️ Detectamos el origen exacto del pedido (Excel o Manual)
+            fuente_pedido = str(fila_pedido_ver.get('fuente', '')).strip().lower()
 
         with col_b2:
             st.markdown("<br>", unsafe_allow_html=True)
             conn_ver = get_connection()
-            # Escudo de triple verificación: Busca por ID numérico o por código de texto eliminando espacios de la nube
             df_items_raw = pd.read_sql(f"SELECT * FROM items_pedido WHERE TRIM(CAST(pedido_id AS TEXT))='{id_ver}' OR TRIM(CAST(pedido_id AS TEXT))='{num_ped_ver}'", conn_ver)
             obs_query = pd.read_sql(f"SELECT observaciones, men FROM pedidos WHERE TRIM(CAST(id AS TEXT))='{id_ver}'", conn_ver)
             
@@ -943,36 +944,49 @@ with tab2:
             men_txt = str(men_val).strip() if men_val is not None and str(men_val) not in ['None', 'nan'] else ""
             conn_ver.close()
 
-        if not df_items_raw.empty:
+        # 🎯 BIPARTICIÓN INTELIGENTE DE FORMATOS DE IMPRESIÓN (PDF)
+        if "excel" in fuente_pedido or "masiva" in fuente_pedido or df_items_raw.empty:
+            # --- 🛠️ FORMATO A: CARGA MASIVA (Planilla de Ingeniería - Estilo OT-83) ---
+            st.info(f"📦 **Pedido por Carga Masiva (Excel):** Formato Planilla de Ingeniería Detectado.")
+            
+            # REGLA LUCIÓ: Aquí enlazas la función PDF que ya usas al cerrar en el paso 3
+            try:
+                # NOTA: Reemplaza 'tu_funcion_pdf_ingenieria' por el nombre real de la función que genera tu PDF (OT-83)
+                # pdf_data = tu_funcion_pdf_ingenieria(fila_pedido_ver)
+                # st.download_button(
+                #     label=f"🖨️ Imprimir Pedido de Ductos (PDF Estilo OT-83)",
+                #     data=pdf_data,
+                #     file_name=f"Pedido_Ductos_{num_ped_ver}.pdf",
+                #     mime="application/pdf"
+                # )
+                st.caption("✨ *Visor de Ingeniería listo. Descomenta las líneas del botón en el código y conecta tu función para activar el PDF.*")
+            except Exception as e:
+                st.error(f"Error al generar formato de ingeniería: {e}")
+
+        else:
+            # --- 🛠️ FORMATO B: INGRESO MANUAL (Orden de Trabajo Interna - Estilo OT-54) ---
+            st.success(f"📝 **Pedido por Ingreso Manual:** Desplegando desglose de piezas para taller.")
+            
             df_items_display = df_items_raw[['item_numero', 'descripcion', 'detalles', 'cantidad', 'espesor', 'peso_total']].rename(columns={
                 'item_numero': 'Ítem', 'descripcion': 'Pieza', 'detalles': 'Medidas y Especificaciones', 'cantidad': 'Cant.', 'espesor': 'Espesor (mm)', 'peso_total': 'Peso (Kg)'
             })
             st.dataframe(df_items_display, use_container_width=True, hide_index=True)
             
-            st.download_button(
-                label=f"📥 Descargar Comprobante de Fabricación ({num_ped_ver})",
-                data=df_items_display.to_csv(index=False).encode('utf-8-sig'),
-                file_name=f"Comprobante_Fabricacion_{num_ped_ver}.csv",
-                mime="text/csv"
-            )
-        else:
-            st.info("No hay piezas detalladas en la base de datos para este pedido.")
-            
-            # Ficha de contingencia para que el taller NUNCA se detenga si es un pedido previo al parche
-            df_contingencia = pd.DataFrame([{
-                "Pedido": num_ped_ver,
-                "Obra": fila_pedido_ver['obra_codigo'],
-                "Detalle": "Encabezado General de Fabricación (Revisar planilla Excel original)",
-                "Kg Estimados": fila_pedido_ver.get('kg_estimados', 'Ver Excel')
-            }])
-            st.download_button(
-                label="📥 Descargar Ficha de Fabricación Básica",
-                data=df_contingencia.to_csv(index=False).encode('utf-8-sig'),
-                file_name=f"Ficha_Fabricacion_Base_{num_ped_ver}.csv",
-                mime="text/csv"
-            )
+            # REGLA LUCIÓ: Aquí enlazas la función PDF para la Orden de Trabajo Interna
+            try:
+                # NOTA: Reemplaza 'tu_funcion_pdf_taller' por el nombre real de la función que genera tu PDF (OT-54)
+                # pdf_taller = tu_funcion_pdf_taller(fila_pedido_ver, df_items_display)
+                # st.download_button(
+                #     label=f"🖨️ Imprimir Orden de Trabajo (PDF Estilo OT-54)",
+                #     data=pdf_taller,
+                #     file_name=f"Orden_Trabajo_{num_ped_ver}.pdf",
+                #     mime="application/pdf"
+                # )
+                st.caption("✨ *Visor de Taller listo. Descomenta las líneas en tu código y conecta tu función de PDF de taller.*")
+            except Exception as e:
+                st.error(f"Error al generar formato de taller: {e}")
 
-        # --- Alertas Visuales ---
+        # --- Alertas Visuales (MEN y Comentarios) ---
         alertas_ui = []
         if "Aislación" in str(fila_pedido_ver.get('fuente', '')): alertas_ui.append("🧊 AISLACIÓN INTERIOR")
         if "Forro Metálico" in str(fila_pedido_ver.get('fuente', '')): alertas_ui.append("🛡️ FORRO METÁLICO")
