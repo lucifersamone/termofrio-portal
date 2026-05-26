@@ -848,19 +848,36 @@ with tab2:
         st.caption("Selecciona un pedido para ver exactamente qué piezas y medidas trae antes de fabricar.")
         col_b1, col_b2 = st.columns([1, 2])
         
+            # 🔥 LIMPIEZA DE EMERGENCIA PARA EVITAR ESPACIOS OCULTOS EN EL SELECTBOX
+        if 'num_pedido' in dfp.columns:
+            dfp['num_pedido'] = dfp['num_pedido'].astype(str).str.strip().str.upper()
+        if 'obra_codigo' in dfp.columns:
+            dfp['obra_codigo'] = dfp['obra_codigo'].astype(str).str.strip()
+        if 'id' in dfp.columns:
+            dfp['id'] = dfp['id'].astype(str).str.strip()
+
         with col_b1:
             pedido_a_ver = st.selectbox("Seleccionar Pedido:", dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'], key="ver_detalles_ped")
             fila_pedido_ver = dfp[dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'] == pedido_a_ver].iloc[0]
-            id_ver = fila_pedido_ver['id']
-            
+            id_ver = str(fila_pedido_ver['id']).strip()
+            num_ped_ver = str(fila_pedido_ver['num_pedido']).strip()
+
         with col_b2:
             st.markdown("<br>", unsafe_allow_html=True)
             conn_ver = get_connection()
-            df_items_raw = pd.read_sql(f"SELECT * FROM items_pedido WHERE pedido_id={id_ver}", conn_ver)
             
-            obs_query = pd.read_sql(f"SELECT observaciones, men FROM pedidos WHERE id={id_ver}", conn_ver)
-            obs_txt = obs_query.iloc[0]['observaciones'] if not obs_query.empty else ""
-            men_txt = obs_query.iloc[0]['men'] if not obs_query.empty and 'men' in obs_query.columns else ""
+            # 🛡️ DOBLE ESCUDO CON TRIM: Busca por ID o por Texto de Pedido eliminando cualquier espacio oculto de Postgres
+            df_items_raw = pd.read_sql(f"SELECT * FROM items_pedido WHERE TRIM(CAST(pedido_id AS TEXT))='{id_ver}' OR TRIM(CAST(pedido_id AS TEXT))='{num_ped_ver}'", conn_ver)
+            
+            obs_query = pd.read_sql(f"SELECT observaciones, men FROM pedidos WHERE TRIM(CAST(id AS TEXT))='{id_ver}'", conn_ver)
+            
+            # Guardamos de forma segura convirtiendo a texto y limpiando los nulos de la nube
+            obs_val = obs_query.iloc[0]['observaciones'] if not obs_query.empty else ""
+            obs_txt = str(obs_val).strip() if obs_val is not None and str(obs_val) != 'None' and str(obs_val) != 'nan' else ""
+            
+            men_val = obs_query.iloc[0]['men'] if not obs_query.empty and 'men' in obs_query.columns else ""
+            men_txt = str(men_val).strip() if men_val is not None and str(men_val) != 'None' and str(men_val) != 'nan' else ""
+            
             conn_ver.close()
 
         if not df_items_raw.empty:
@@ -869,17 +886,27 @@ with tab2:
             })
             st.dataframe(df_items_display, use_container_width=True, hide_index=True)
             
-          # --- Alerta visual en pantalla de MEN, Comentarios y EXTRAS ---
-            alertas_ui = []
-            if "Aislación" in str(fila_pedido_ver['fuente']): alertas_ui.append("🧊 AISLACIÓN INTERIOR")
-            if "Forro Metálico" in str(fila_pedido_ver['fuente']): alertas_ui.append("🛡️ FORRO METÁLICO")
+            # 📄 SOLUCIÓN EN RUTA: Botón directo para que descargues las medidas del taller apenas se sube el Excel
+            st.download_button(
+                label=f"📥 Descargar Comprobante de Fabricación ({num_ped_ver})",
+                data=df_items_display.to_csv(index=False).encode('utf-8-sig'),
+                file_name=f"Comprobante_Fabricacion_{num_ped_ver}.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("No hay piezas en este pedido o es un formato antiguo.")
 
-            if alertas_ui or men_txt.strip() or obs_txt.strip():
-                msj = ""
-                if alertas_ui: msj += f"**🚨 ATENCIÓN:** Este pedido incluye **{' y '.join(alertas_ui)}**\n\n"
-                if men_txt.strip(): msj += f"**📍 MEN:** {men_txt}  \n"
-                if obs_txt.strip(): msj += f"**📝 Comentarios:** {obs_txt}"
-                st.warning(msj)
+        # --- Alerta visual en pantalla de MEN, Comentarios y EXTRAS ---
+        alertas_ui = []
+        if "Aislación" in str(fila_pedido_ver['fuente']): alertas_ui.append("🧊 AISLACIÓN INTERIOR")
+        if "Forro Metálico" in str(fila_pedido_ver['fuente']): alertas_ui.append("🛡️ FORRO METÁLICO")
+
+        if alertas_ui or men_txt or obs_txt:
+            msj = ""
+            if alertas_ui: msj += f"**⚠️ ATENCIÓN:** Este pedido incluye **{', '.join(alertas_ui)}**\n\n"
+            if men_txt: msj += f"**👤 MEN:** {men_txt} \n"
+            if obs_txt: msj += f"**📝 Comentarios:** {obs_txt}"
+            st.warning(msj)
 
             # --- BOTONES DE IMPRESIÓN PARA TALLER ---
             st.markdown("##### 🖨️ Documentos para Taller (Impresión)")
