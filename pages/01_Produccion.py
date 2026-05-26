@@ -618,31 +618,31 @@ with tab1:
                 st.rerun()
                     
         # Capturamos el ID real generado por la base de datos de forma directa
-        pid = c.fetchone()[0]
-        
-        # Insertamos las piezas limpiando los tipos de datos de Excel (Numpy) para Postgres
-        for _, r in edited_df.iterrows():
-            cant_val = int(r['cantidad']) if pd.notnull(r['cantidad']) else 0
-            peso_val = float(r['peso_total']) if pd.notnull(r['peso_total']) else 0.0
-            esp_val = float(r['espesor']) if pd.notnull(r['espesor']) else 0.0
-            pre_val = float(r['precio_unitario']) if pd.notnull(r['precio_unitario']) else 0.0
-            tot_val = float(r['total_linea']) if pd.notnull(r['total_linea']) else 0.0
-            
-            c.execute("""
-                INSERT INTO items_pedido (
-                    pedido_id, item_numero, descripcion, cantidad, 
-                    peso_total, espesor, material, unidad_cobro, 
-                    precio_unitario, total_linea, origen_precio
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                pid, str(r['item_num']).strip(), str(r['descripcion']).strip(), cant_val,
-                peso_val, esp_val, str(r['material']).strip(), str(r['unidad_cobro']).strip(),
-                pre_val, tot_val, str(r['origen_precio']).strip()
-            ))
-            
-        st.success(f"¡Guardado correctamente en DB y Bóveda como el pedido {numero_oficial}!")
-        st.rerun()
-        st.success(f"✅ ¡Guardado correctamente en DB y Bóveda como el pedido {numero_oficial}!"); st.rerun()
+                pid = c.fetchone()[0]
+                
+                # Insertamos las piezas limpiando los tipos de datos de Excel (Numpy) para Postgres
+                for _, r in edited_df.iterrows():
+                    cant_val = int(r['cantidad']) if pd.notnull(r['cantidad']) else 0
+                    peso_val = float(r['peso_total']) if pd.notnull(r['peso_total']) else 0.0
+                    esp_val = float(r['espesor']) if pd.notnull(r['espesor']) else 0.0
+                    pre_val = float(r['precio_unitario']) if pd.notnull(r['precio_unitario']) else 0.0
+                    tot_val = float(r['total_linea']) if pd.notnull(r['total_linea']) else 0.0
+                    
+                    c.execute("""
+                        INSERT INTO items_pedido (
+                            pedido_id, item_numero, descripcion, cantidad, 
+                            peso_total, espesor, material, unidad_cobro, 
+                            precio_unitario, total_linea, origen_precio
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        pid, str(r['item_num']).strip(), str(r['descripcion']).strip(), cant_val,
+                        peso_val, esp_val, str(r['material']).strip(), str(r['unidad_cobro']).strip(),
+                        pre_val, tot_val, str(r['origen_precio']).strip()
+                    ))
+                    
+                st.success(f"¡Guardado correctamente en DB y Bóveda como el pedido {numero_oficial}!")
+                st.rerun()
+                st.success(f"✅ ¡Guardado correctamente en DB y Bóveda como el pedido {numero_oficial}!"); st.rerun()
 
         with t_manual:
             if 'carrito_admin' not in st.session_state:
