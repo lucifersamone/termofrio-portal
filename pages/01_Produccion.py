@@ -14,9 +14,10 @@ import io
 import matplotlib.patches as patches
 import psycopg2
 import re
+from PIL import Image  # <-- IMPORTANTE PARA CONVERTIR EL LOGO .ICO
 
 # ==========================================================
-# --- CONFIGURACIÓN DE RUTAS GLOBALES (AL INICIO) ---
+# --- CONFIGURACIÓN DE RUTAS GLOBALES (DEBEN ESTAR ARRIBA) ---
 # ==========================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
@@ -33,13 +34,18 @@ os.makedirs(CARPETA_EXCELS, exist_ok=True)
 CONTRASEÑA_EXCEL = "termofrio" 
 PASS_ADMIN_GENERAL = "adminprecios"
 
+def limpiar_texto(text):
+    if not isinstance(text, str): text = str(text)
+    mapping = {"–": "-", "—": "-", "…": "...", "“": '"', "”": '"', "‘": "'", "’": "'"}
+    for char, replacement in mapping.items(): text = text.replace(char, replacement)
+    return text.encode("latin-1", "replace").decode("latin-1")
+
 # ==========================================================
 # --- FUNCIONES DE GENERACIÓN DE DOCUMENTOS PDF ---
 # ==========================================================
 def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_est, observaciones="", men="", es_final=False):
     """Generador de PDF con conversión dinámica de .ico a .png e inyección de firmas controladas."""
     try:
-        from PIL import Image
         clean_id = str(pedido_num).replace("/", "-").replace("\\", "-").strip()
         temp_dir = tempfile.gettempdir()
         ruta_pdf = os.path.join(temp_dir, f"Comprobante_{clean_id}.pdf")
@@ -63,7 +69,7 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
             if os.path.exists(logo_final_path): pdf.image(logo_final_path, x=10, y=8, w=45)
             if os.path.exists(ISO_PATH): pdf.image(ISO_PATH, x=260, y=8, w=20)
         except Exception as e:
-            print(f"Advertencia al cargar logos en coordenadas: {e}")
+            print(f"Advertencia al cargar logos: {e}")
 
         # Encabezado Oficial
         pdf.set_font("Arial", "B", 14)
@@ -123,7 +129,7 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
         pdf.output(ruta_pdf)
         return ruta_pdf
     except Exception as e:
-        print(f"Error generando PDF Cliente nativo interno: {e}")
+        print(f"Error generando PDF: {e}")
         return None
 
 def generar_pdf_firmado(ticket_id, kg_reales=0):
@@ -138,7 +144,7 @@ def generar_pdf_firmado(ticket_id, kg_reales=0):
             ceco=ped.iloc[0]['ceco'], solicitante=ped.iloc[0]['quien_envia'], items_df=items,
             kg_est=ped.iloc[0]['kg_estimados'], observaciones=ped.iloc[0]['observaciones'],
             men=ped.iloc[0]['men'], 
-            es_final=True # <-- Activa firmas y timbres
+            es_final=True # <-- Activa firmas y timbres en el paso 3
         )
     finally:
         conn.close()
