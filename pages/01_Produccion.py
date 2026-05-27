@@ -579,7 +579,7 @@ with tab1:
                     
                     query_ped = """INSERT INTO pedidos 
                     (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo, nivel_urgencia, ruta_excel, observaciones, men) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id"""
                     
                     c.execute(query_ped, (
                         numero_oficial, enc['tf'], str(obra_input).strip(), str(ceco_input).strip(), 
@@ -587,8 +587,7 @@ with tab1:
                         0.0, float(m2_input), 'Pendiente', 'En Proceso', 'Normal', ruta_guardado, "", ""
                     ))
                     
-                    # 🔥 Usamos lastrowid porque nuestro adaptador ya extrajo el ID en segundo plano
-                    pid = c.lastrowid
+                    pid = c.fetchone()[0]
                     
                     query_item = """INSERT INTO items_pedido 
                     (pedido_id, item_numero, descripcion, detalles, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio) 
@@ -834,14 +833,16 @@ with t_manual:
                     conn = get_connection()
                     c = conn.cursor()
                     
-                    query_solicitante = """
-                    INSERT INTO directorio_solicitantes (nombre, correo) 
-                    VALUES (%s, %s) 
-                    ON CONFLICT (nombre) 
-                    DO UPDATE SET correo = EXCLUDED.correo
-                    """
-                    c.execute(query_solicitante, (quien_manual.strip(), correo_manual.strip()))
+        # Reemplaza desde la línea 836 hasta la 842 por esto:
+                c.execute("SELECT id FROM directorio_solicitantes WHERE nombre = %s", (quien_manual.strip(),))
+                resultado = c.fetchone()
 
+                if resultado:
+                    c.execute("UPDATE directorio_solicitantes SET correo = %s WHERE nombre = %s", 
+                            (correo_manual.strip(), quien_manual.strip()))
+                else:
+                    c.execute("INSERT INTO directorio_solicitantes (nombre, correo) VALUES (%s, %s)", 
+                      (quien_manual.strip(), correo_manual.strip()))
                     fuente_guardado = "Generado Manualmente Taller"
                     if aislacion_manual: fuente_guardado += " (Aislación)"
                     if forro_metalico_manual: fuente_guardado += " (Forro Metálico)"
