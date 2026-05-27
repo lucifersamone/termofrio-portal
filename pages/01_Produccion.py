@@ -883,21 +883,21 @@ with t_manual:
                             detalles_manuales = str(r.get('Detalles/Medidas', r.get('detalles', ''))).strip()
                             if detalles_manuales in ['None', 'nan', '']: detalles_manuales = ""
 
-                            # Esta debe ser la estructura de tu execute
-                        c.execute(query_insert_item_manual, (
-                            pid, 
-                            str(r['item_num']), 
-                            str(r['Descripción']), 
-                            int(r['Cantidad']),        # 4ta columna: cantidad (numérica)
-                            float(r['Kg']),            # 5ta columna: peso_total (numérica)
-                            float(r['Espesor']),       # 6ta columna: espesor (numérica)
-                            str(r['material']), 
-                            str(r['unidad_cobro']), 
-                            float(r['precio_unitario']), 
-                            float(r['total_linea']), 
-                            str(r['origen_precio']),
-                            detalles_manuales          # 12va columna: detalles (SIEMPRE AL FINAL)
-                        ))
+                            # 🔥 ¡ESTO AHORA ESTÁ DENTRO DEL BUCLE FOR!
+                            c.execute(query_insert_item_manual, (
+                                pid, 
+                                str(r['item_num']), 
+                                str(r['Descripción']), 
+                                int(r['Cantidad']),        
+                                float(r['Kg']),            
+                                float(r['Espesor']),       
+                                str(r['material']), 
+                                str(r['unidad_cobro']), 
+                                float(r['precio_unitario']), 
+                                float(r['total_linea']), 
+                                str(r['origen_precio']),
+                                detalles_manuales          
+                            ))
 
                         conn.commit()
                         conn.close()
