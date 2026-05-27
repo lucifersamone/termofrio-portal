@@ -562,26 +562,27 @@ with tab1:
                 st.markdown(f"### 💰 Neto: $ {neto:,.0f} | ⚖️ Peso: {peso:,.1f} Kg")
                 
                 if st.button("📥 Guardar Pedido (Excel)", type="primary", key="btn_guardar_excel_definitivo"):
-                    conn = get_connection(); c = conn.cursor()
                     
-                    c.execute("SELECT COALESCE(MAX(CAST(num_pedido AS INTEGER)), 0) + 1 FROM pedidos WHERE obra_codigo = %s", (str(obra_input).strip(),))
-                    numero_oficial = c.fetchone()[0]
+                    # 🔥 REEMPLAZO CLAVE: Usamos la función maestra en Python para evitar el InvalidTextRepresentation de Postgres
+                    numero_oficial = obtener_siguiente_correlativo_obra(str(obra_input).strip(), enc['tf'])
                     
-                    nombre_seguro = f"OT-{numero_oficial}"
                     fecha_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    ruta_guardado = os.path.join(CARPETA_EXCELS, f"Pedido_Local_{nombre_seguro}_{fecha_str}.xlsx")
+                    # Usamos el numero_oficial directamente para el nombre del archivo
+                    ruta_guardado = os.path.join(CARPETA_EXCELS, f"Pedido_Local_{numero_oficial}_{fecha_str}.xlsx")
                     
                     with open(ruta_guardado, "wb") as f:
                         f.write(arch_ped.getvalue())
                         
                     flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
                     
+                    conn = get_connection(); c = conn.cursor()
+                    
                     query_ped = """INSERT INTO pedidos 
                     (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo, nivel_urgencia, ruta_excel, observaciones, men) 
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id"""
                     
                     c.execute(query_ped, (
-                        str(numero_oficial), enc['tf'], str(obra_input).strip(), str(ceco_input).strip(), 
+                        numero_oficial, enc['tf'], str(obra_input).strip(), str(ceco_input).strip(), 
                         quien, fuente, datetime.now(), flim.date(), float(neto), float(peso), 
                         0.0, float(m2_input), 'Pendiente', 'En Proceso', 'Normal', ruta_guardado, "", ""
                     ))
