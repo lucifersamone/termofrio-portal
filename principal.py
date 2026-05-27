@@ -225,6 +225,13 @@ USUARIOS = {
         "ceco": ["2-12-023", "2-12-024"],
         "obra": ["TF – 13784 ACHS EDIFICIO B PROVIDENCIA", "TF-13817 ACHS - EDIFICIO K1 PISO 1 - EDIFICIO C"]
     },
+    "salvarez": {
+        "clave": "1234", "rol": "cliente", "nombre": "Sebastian Alvarez",
+        "correo": "salvarez@termofrio.cl", 
+        "tf": ["13784", "13817"], 
+        "ceco": ["2-12-023", "2-12-024"],
+        "obra": ["TF – 13784 ACHS EDIFICIO B PROVIDENCIA", "TF-13817 ACHS - EDIFICIO K1 PISO 1 - EDIFICIO C"]
+    },
     
     "cbustos": {"clave": "1234", "rol": "cliente", "nombre": "Cristian Bustos", "correo": "cristian.bustos@ejemplo.cl"},
     "jguzman": {"clave": "1234", "rol": "cliente", "nombre": "Joel Guzman", "correo": "jguzman@termofrio.cl"},
