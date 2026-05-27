@@ -579,7 +579,7 @@ with tab1:
                     
                     query_ped = """INSERT INTO pedidos 
                     (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo, nivel_urgencia, ruta_excel, observaciones, men) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id"""
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
                     
                     c.execute(query_ped, (
                         numero_oficial, enc['tf'], str(obra_input).strip(), str(ceco_input).strip(), 
@@ -587,7 +587,8 @@ with tab1:
                         0.0, float(m2_input), 'Pendiente', 'En Proceso', 'Normal', ruta_guardado, "", ""
                     ))
                     
-                    pid = c.fetchone()[0]
+                    # 🔥 Usamos lastrowid porque nuestro adaptador ya extrajo el ID en segundo plano
+                    pid = c.lastrowid
                     
                     query_item = """INSERT INTO items_pedido 
                     (pedido_id, item_numero, descripcion, detalles, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio) 
