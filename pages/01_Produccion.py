@@ -15,9 +15,7 @@ import matplotlib.patches as patches
 import psycopg2
 import re
 
-
-
-# --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.4 - SOPORTE LASTROWID PARA EXCEL) ---
+# --- ADAPTADOR INVISIBLE PARA SUPABASE (UNIFICADO) ---
 class SQLiteToPostgresCursor:
     def __init__(self, pg_cursor):
         self.pg_cursor = pg_cursor
@@ -42,7 +40,6 @@ class SQLiteToPostgresCursor:
         query = query.replace('[', '"').replace(']', '"')
         query = re.sub(r'(?i)\bpedidos\b', 'pedidostf', query)
         
-        # 🔥 TRUCO MAESTRO: Intercepta los INSERT para capturar el ID generado en Supabase
         is_insert = query.strip().upper().startswith("INSERT")
         if is_insert and "RETURNING" not in query.upper():
             query = query.rstrip('; ') + " RETURNING id"
@@ -80,29 +77,47 @@ class SQLiteToPostgresCursor:
     def __getattr__(self, name):
         return getattr(self.pg_cursor, name)
 
-# --- LA FUNCIÓN QUE RECONOCERÁ TU CÓDIGO ---
+class SupabaseSQLAdapter:
+    def __init__(self):
+        self.conn = psycopg2.connect(
+            host=st.secrets["DB_HOST"],
+            database=st.secrets["DB_NAME"],
+            user=st.secrets["DB_USER"],
+            port=st.secrets["DB_PORT"],
+            password=st.secrets["DB_PASS"]
+        )
+        self.conn.autocommit = True
+        
+    def cursor(self):
+        return SQLiteToPostgresCursor(self.conn.cursor())
+
+    def commit(self):
+        pass
+
+    def close(self):
+        self.conn.close()
+
+    def __getattr__(self, name):
+        return getattr(self.conn, name)
+
 def get_connection(): 
     return SupabaseSQLAdapter()
 
 def limpiar_texto(text):
-    """Limpia caracteres especiales que causan errores en PDFs."""
     if not isinstance(text, str): text = str(text)
     mapping = {"–": "-", "—": "-", "…": "...", "“": '"', "”": '"', "‘": "'", "’": "'"}
     for char, replacement in mapping.items(): text = text.replace(char, replacement)
     return text.encode("latin-1", "replace").decode("latin-1")
 
 def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_est, observaciones="", men=""):
-    """Generador de PDF para Clientes - 100% Nativo en Python, compatible con la Nube."""
     try:
         clean_id = str(pedido_num).replace("/", "-").replace("\\", "-").strip()
         temp_dir = tempfile.gettempdir()
         ruta_pdf = os.path.join(temp_dir, f"Comprobante_{clean_id}.pdf")
 
-        # Configuración del documento en Horizontal (Landscape) para calzar las columnas de taller
         pdf = FPDF(orientation='L', unit='mm', format='A4')
         pdf.add_page()
         
-        # Encabezado Oficial Termofrio
         pdf.set_font("Arial", "B", 14)
         pdf.cell(0, 10, limpiar_texto("ORDEN DE FABRICACIÓN Y DESPACHO - TERMOFRIO"), ln=True, align="C")
         pdf.set_font("Arial", "", 10)
@@ -110,7 +125,6 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
         pdf.cell(0, 8, limpiar_texto(f"Solicitante: {solicitante}"), ln=True, align="C")
         pdf.ln(5)
 
-        # Dibujar Encabezados de la Tabla
         pdf.set_font("Arial", "B", 9)
         pdf.cell(15, 6, "Item", border=1, align="C")
         pdf.cell(65, 6, "Descripcion", border=1)
@@ -119,7 +133,6 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
         pdf.cell(20, 6, "Esp(mm)", border=1, align="C")
         pdf.cell(20, 6, "Kg", border=1, align="C", ln=True)
 
-        # Rellenar filas de piezas desde el DataFrame
         pdf.set_font("Arial", "", 9)
         for _, row in items_df.iterrows():
             try: kg_str = f"{float(row.get('peso_total', 0)):.2f}"
@@ -131,7 +144,6 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
             itm = str(row.get('item_numero', row.get('item_num', '')))
             dsc = str(row.get('descripcion', row.get('Descripción', '')))
             
-            # Limpieza profunda de strings nulos de la Base de Datos
             val_det = row.get('detalles', row.get('Detalles/Medidas', ''))
             if val_det is None or pd.isna(val_det) or str(val_det).lower() in ['none', 'nan']:
                 det = ""
@@ -147,7 +159,6 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
             pdf.cell(20, 6, limpiar_texto(esp_str), border=1, align="C")
             pdf.cell(20, 6, limpiar_texto(kg_str), border=1, align="C", ln=True)
 
-        # Sección inferior de Comentarios
         if observaciones and str(observaciones).strip() and str(observaciones) != "nan":
             pdf.ln(5)
             pdf.set_font("Arial", "I", 9)
@@ -159,7 +170,7 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
         print(f"Error generando PDF Cliente nativo interno: {e}")
         return None
 
-# --- 🔐 SEGURIDAD UNIFICADA CON ROLES ---
+# --- SEGURIDAD ---
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.warning("⚠️ Acceso Restringido. Por favor inicie sesión en la pantalla Principal.")
     st.stop()
@@ -168,23 +179,17 @@ if st.session_state.get('rol') == 'cliente':
     st.error("🔒 Acceso denegado. Este portal es de uso exclusivo para administración de taller.")
     st.stop()
 
-# --- RUTAS Y CARPETAS (Adaptadas para la Nube) ---
+# --- RUTAS ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
-DB_PATH = os.path.join(ROOT_DIR, 'produccion_v55_master.db')
 DIR_RECURSOS = os.path.join(ROOT_DIR, 'firma_timbre') 
-FIRMA_PATH = os.path.join(DIR_RECURSOS, 'firma.png')
-TIMBRE_PATH = os.path.join(DIR_RECURSOS, 'timbre.png')
-LOGO_PATH = os.path.join(DIR_RECURSOS, 'termofriologo.jpg')
-ISO_PATH = os.path.join(DIR_RECURSOS, 'tfiso.jpg')
 CARPETA_EXCELS = os.path.join(ROOT_DIR, 'excels_guardados') 
-
 os.makedirs(CARPETA_EXCELS, exist_ok=True)
 
 CONTRASEÑA_EXCEL = "termofrio" 
 PASS_ADMIN_GENERAL = "adminprecios"
 
-# --- LISTAS DESPLEGABLES ESTANDARIZADAS ---
+# --- LISTAS Y MAPEOS ---
 LISTA_DESCRIPCIONES = [
     "Ducto Recto", "Codo", "Codo Transfor.", "Medio Codo", "Transformación", 
     "S", "S Transformada", "Zapato c/ Templador", "Zapato s/ Templador", 
@@ -253,97 +258,21 @@ MAPEO_CAMPOS = {
     "Pieza especial": ["A", "B", "d", "Simetria", "C", "D", "H", "Dia1", "Dia2", "Angulo", "Casquetes", "Entrada", "Salida"]
 }
 
-# --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.3 - COMPLETO Y UNIFICADO) ---
-class SQLiteToPostgresCursor:
-    def __init__(self, pg_cursor):
-        self.pg_cursor = pg_cursor
-        
-    def execute(self, query, vars=None):
-        if vars is not None:
-            query = query.replace('?', '%s')
-            cleaned_vars = []
-            for v in vars:
-                if hasattr(v, 'item') and callable(getattr(v, 'item')):
-                    cleaned_vars.append(v.item())
-                else:
-                    cleaned_vars.append(v)
-            vars = tuple(cleaned_vars)
-            
-        query = re.sub(r"(?i)\bas\s+'([^']+)'", r'AS "\1"', query)
-        query = query.replace('[', '"').replace(']', '"')
-        query = re.sub(r'(?i)\bpedidos\b', 'pedidostf', query)
-        return self.pg_cursor.execute(query, vars)
-        
-    def executemany(self, query, vars_list=None):
-        # Soporte para inserciones masivas de ítems desde el Excel
-        if vars_list is not None:
-            query = query.replace('?', '%s')
-            cleaned_vars_list = []
-            for vars in vars_list:
-                cleaned_vars = []
-                for v in vars:
-                    if hasattr(v, 'item') and callable(getattr(v, 'item')):
-                        cleaned_vars.append(v.item())
-                    else:
-                        cleaned_vars.append(v)
-                cleaned_vars_list.append(tuple(cleaned_vars))
-            vars_list = cleaned_vars_list
-            
-        query = re.sub(r"(?i)\bas\s+'([^']+)'", r'AS "\1"', query)
-        query = query.replace('[', '"').replace(']', '"')
-        query = re.sub(r'(?i)\bpedidos\b', 'pedidostf', query)
-        return self.pg_cursor.executemany(query, vars_list)
-        
-    def __getattr__(self, name):
-        return getattr(self.pg_cursor, name)
-
-class SupabaseSQLAdapter:
-    def __init__(self):
-        self.conn = psycopg2.connect(
-            host=st.secrets["DB_HOST"],
-            database=st.secrets["DB_NAME"],
-            user=st.secrets["DB_USER"],
-            port=st.secrets["DB_PORT"],
-            password=st.secrets["DB_PASS"]
-        )
-        self.conn.autocommit = True
-        
-    def cursor(self):
-        return SQLiteToPostgresCursor(self.conn.cursor())
-
-    def commit(self):
-        pass
-
-    def close(self):
-        self.conn.close()
-
-    def __getattr__(self, name):
-        return getattr(self.conn, name)
-
-def get_connection(): 
-    return SupabaseSQLAdapter()
-
-# --- MAGIA: EL MOTOR BLINDADO QUE TOMA EL CORRELATIVO CORRECTO ---
 def obtener_siguiente_correlativo_obra(obra_codigo, tf):
-    """Busca el número de pedido más alto para una obra específica y devuelve el siguiente con prefijo OT."""
     conn = get_connection()
     c = conn.cursor()
-    
-    # Blindaje contra espacios en blanco o valores nulos
     obra_segura = obra_codigo if (obra_codigo and str(obra_codigo).strip() != "" and obra_codigo != "Seleccione Obra...") else "NULO_OBRA_XYZ"
     tf_seguro = tf if (tf and str(tf).strip() != "") else "NULO_TF_XYZ"
     
-    c.execute("SELECT num_pedido FROM pedidos WHERE obra_codigo = ? OR tf = ? ORDER BY id DESC LIMIT 1", (obra_segura, tf_seguro))
+    c.execute("SELECT num_pedido FROM pedidos WHERE obra_codigo = %s OR tf = %s ORDER BY id DESC LIMIT 1", (obra_segura, tf_seguro))
     resultado = c.fetchone()
     conn.close()
 
     if resultado and resultado[0]:
         ultimo_num_texto = str(resultado[0])
         try:
-            if "-" in ultimo_num_texto:
-                ultimo_numero = int(ultimo_num_texto.split('-')[-1])
-            else:
-                ultimo_numero = int(ultimo_num_texto)
+            if "-" in ultimo_num_texto: ultimo_numero = int(ultimo_num_texto.split('-')[-1])
+            else: ultimo_numero = int(ultimo_num_texto)
             nuevo_numero = ultimo_numero + 1
         except ValueError: nuevo_numero = 1
     else: nuevo_numero = 1
@@ -366,7 +295,7 @@ def actualizar_bd_estructuras():
     except: pass
     try: c.execute("ALTER TABLE items_pedido ADD COLUMN detalles TEXT")
     except: pass
-    try: c.execute('''CREATE TABLE IF NOT EXISTS directorio_solicitantes (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT UNIQUE, correo TEXT)''')
+    try: c.execute('''CREATE TABLE IF NOT EXISTS directorio_solicitantes (id SERIAL PRIMARY KEY, nombre TEXT UNIQUE, correo TEXT)''')
     except: pass
     try: c.execute('''CREATE TABLE IF NOT EXISTS maestro_obras (tf TEXT, ceco TEXT, nombre TEXT)''')
     except: pass
@@ -440,10 +369,7 @@ def calcular_peso_teorico(desc, l_a, l_b, l_c, l_d, l_h, diam, diam2, esp):
         b = float(str(l_b).replace(',','.')) / 100 if l_b else 0.0
         c = float(str(l_c).replace(',','.')) / 100 if l_c else 0.0
         d = float(str(l_d).replace(',','.')) / 100 if l_d else 0.0
-        
-        # --- AQUÍ ESTÁ EL CAMBIO PARA LOS CENTÍMETROS ---
         h = float(str(l_h).replace(',','.')) / 100 if l_h else 0.0
-        
         d1 = float(str(diam).replace(',','.')) / 100 if diam else 0.0
         d2 = float(str(diam2).replace(',','.')) / 100 if diam2 else 0.0
         espesor = float(esp)
@@ -451,8 +377,7 @@ def calcular_peso_teorico(desc, l_a, l_b, l_c, l_d, l_h, diam, diam2, esp):
         area = 0.0
         desc_upper = str(desc).upper()
 
-        if "RECTO" in desc_upper or "ALETA" in desc_upper or "TEMPLADOR" in desc_upper:
-            area = 2 * (a + b) * h
+        if "RECTO" in desc_upper or "ALETA" in desc_upper or "TEMPLADOR" in desc_upper: area = 2 * (a + b) * h
         elif "CIL" in desc_upper or "CONO" in desc_upper:
             radio_prom = (d1 + d2) / 2 if d2 > 0 else d1
             area = 3.1416 * radio_prom * h
@@ -467,15 +392,11 @@ def calcular_peso_teorico(desc, l_a, l_b, l_c, l_d, l_h, diam, diam2, esp):
             radio_medio = (a / 2) + 0.15 
             largo_curva = (3.1416 * radio_medio) / 2 
             area = 2 * (a + b) * largo_curva
-        elif "S " in desc_upper or " S " in desc_upper:
-            area = 2 * (a + b) * h * 1.2
-        elif "TAPA" in desc_upper or "PLANCHA" in desc_upper:
-            area = a * b
+        elif "S " in desc_upper or " S " in desc_upper: area = 2 * (a + b) * h * 1.2
+        elif "TAPA" in desc_upper or "PLANCHA" in desc_upper: area = a * b
         else:
-            if h > 0 and (a > 0 or d1 > 0): 
-                area = 2 * (a + b) * h if a > 0 else 3.1416 * d1 * h
-            else: 
-                area = a * b
+            if h > 0 and (a > 0 or d1 > 0): area = 2 * (a + b) * h if a > 0 else 3.1416 * d1 * h
+            else: area = a * b
         
         peso_base = area * espesor * 8.0 
         return peso_base * 1.15 
@@ -550,10 +471,7 @@ def procesar_pedido(archivo, df_precios, material_default):
     df_result = pd.DataFrame(items)
     return enc, df_result
 
-
-# --- LÓGICA DE PDF DE DOCUMENTOS NATIVA ---
 def generar_pdf_manual(pedido_num, tf, obra, ceco, solicitante, items_df, kg_reales, fuente="", observaciones="", tipo="despacho", men=""):
-    """Generador de PDF profesional y compatible con Nube."""
     clean_id = str(pedido_num).replace("/", "-").replace("\\", "-").strip()
     temp_dir = tempfile.gettempdir()
     prefijo = "Orden_Trabajo" if tipo == "interna" else "Pedido_Despacho"
@@ -562,7 +480,6 @@ def generar_pdf_manual(pedido_num, tf, obra, ceco, solicitante, items_df, kg_rea
     pdf = FPDF(orientation='L', unit='mm', format='A4')
     pdf.add_page()
     
-    # Encabezado
     pdf.set_font("Arial", "B", 16)
     titulo = "ORDEN DE TRABAJO INTERNA" if tipo == "interna" else "ORDEN DE FABRICACION Y DESPACHO"
     pdf.cell(0, 10, limpiar_texto(f"{titulo} - TERMOFRIO"), ln=True, align="C")
@@ -571,7 +488,6 @@ def generar_pdf_manual(pedido_num, tf, obra, ceco, solicitante, items_df, kg_rea
     pdf.cell(0, 8, limpiar_texto(f"Pedido: {pedido_num} | Obra: {obra} | TF: {tf}"), ln=True)
     pdf.ln(5)
     
-    # Tabla
     pdf.set_font("Arial", "B", 9)
     pdf.cell(15, 8, "Item", border=1, align="C")
     pdf.cell(80, 8, "Descripcion", border=1)
@@ -592,7 +508,6 @@ def generar_pdf_manual(pedido_num, tf, obra, ceco, solicitante, items_df, kg_rea
     return ruta_pdf
 
 def generar_pdf_firmado(ticket_id, kg_reales=0):
-    """Wrapper para extraer datos de BD y llamar al generador."""
     conn = get_connection()
     try:
         ped = pd.read_sql(f"SELECT * FROM pedidos WHERE num_pedido = '{ticket_id}'", conn)
@@ -613,87 +528,81 @@ def generar_pdf_firmado(ticket_id, kg_reales=0):
     finally:
         conn.close()
 
-
 # --- INTERFAZ PRINCIPAL ---
 st.title("📦 Producción - Termofrio SPA")
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["📥 Ingreso", "📋 Gestión & Cierre", "⚙️ Configuración", "📊 Informes EDP", "📈 Dashboard"])
 
 with tab1:
     st.header("Gestión de Nuevos Pedidos")
-    
     t_excel, t_manual = st.tabs(["📁 Carga Rápida por Excel", "✍️ Ingreso Manual de Piezas"])
     
     with t_excel:
-            mats_db = get_materiales_disponibles()
-            material_sel = st.selectbox("🛠️ Material del Pedido (Excel)", mats_db, key="mat_excel_admin")
-            arch_ped = st.file_uploader("Sube Excel Pedido", type=["xls", "xlsx", "xlsm"])
-            
-            if arch_ped:
-                enc, df_det = procesar_pedido(arch_ped, get_precios_df(), material_sel)
-                if df_det.empty: 
-                    st.error("❌ Sin items válidos detectados.")
-                else:
-                    ceco_bd, obra_bd = buscar_datos_por_tf(enc['tf'])
-                    c1, c2, c3, c4 = st.columns(4)
-                    with c1: st.text_input("TF Detectado", value=enc['tf'], disabled=True)
-                    with c2: obra_input = st.text_input("Obra Oficial", value=obra_bd if obra_bd else enc['obra'])
-                    with c3: ceco_input = st.text_input("CECO Oficial", value=ceco_bd if ceco_bd else "")
-                    with c4: m2_input = st.number_input("M2 Totales", value=enc['m2'], format="%.2f")
+        mats_db = get_materiales_disponibles()
+        material_sel = st.selectbox("🛠️ Material del Pedido (Excel)", mats_db, key="mat_excel_admin")
+        arch_ped = st.file_uploader("Sube Excel Pedido", type=["xls", "xlsx", "xlsm"])
+        
+        if arch_ped:
+            enc, df_det = procesar_pedido(arch_ped, get_precios_df(), material_sel)
+            if df_det.empty: 
+                st.error("❌ Sin items válidos detectados.")
+            else:
+                ceco_bd, obra_bd = buscar_datos_por_tf(enc['tf'])
+                c1, c2, c3, c4 = st.columns(4)
+                with c1: st.text_input("TF Detectado", value=enc['tf'], disabled=True)
+                with c2: obra_input = st.text_input("Obra Oficial", value=obra_bd if obra_bd else enc['obra'])
+                with c3: ceco_input = st.text_input("CECO Oficial", value=ceco_bd if ceco_bd else "")
+                with c4: m2_input = st.number_input("M2 Totales", value=enc['m2'], format="%.2f")
+                
+                c5, c6 = st.columns(2)
+                with c5: quien = st.text_input("Solicitante", value=enc['envia'])
+                with c6: fuente = st.text_input("Fuente / Etiqueta", value="Carga Masiva")
+                
+                edited_df = st.data_editor(df_det, use_container_width=True, num_rows="dynamic")
+                neto = edited_df['total_linea'].sum(); peso = edited_df['peso_total'].sum()
+                st.markdown(f"### 💰 Neto: $ {neto:,.0f} | ⚖️ Peso: {peso:,.1f} Kg")
+                
+                if st.button("📥 Guardar Pedido (Excel)", type="primary", key="btn_guardar_excel_definitivo"):
+                    conn = get_connection(); c = conn.cursor()
                     
-                    c5, c6 = st.columns(2)
-                    with c5: quien = st.text_input("Solicitante", value=enc['envia'])
-                    with c6: fuente = st.text_input("Fuente / Etiqueta", value="Carga Masiva")
+                    c.execute("SELECT COALESCE(MAX(CAST(num_pedido AS INTEGER)), 0) + 1 FROM pedidos WHERE obra_codigo = %s", (str(obra_input).strip(),))
+                    numero_oficial = c.fetchone()[0]
                     
-                    edited_df = st.data_editor(df_det, use_container_width=True, num_rows="dynamic")
-                    neto = edited_df['total_linea'].sum(); peso = edited_df['peso_total'].sum()
-                    st.markdown(f"### 💰 Neto: $ {neto:,.0f} | ⚖️ Peso: {peso:,.1f} Kg")
+                    nombre_seguro = f"OT-{numero_oficial}"
+                    fecha_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    ruta_guardado = os.path.join(CARPETA_EXCELS, f"Pedido_Local_{nombre_seguro}_{fecha_str}.xlsx")
                     
-                    if st.button("📥 Guardar Pedido (Excel)", type="primary", key="btn_guardar_excel_definitivo"):
-                        conn = get_connection()
-                        c = conn.cursor()
+                    with open(ruta_guardado, "wb") as f:
+                        f.write(arch_ped.getvalue())
                         
-                        # 🔮 Cálculo seguro del correlativo autoincremental por Obra
-                        c.execute("SELECT COALESCE(MAX(CAST(num_pedido AS INTEGER)), 0) + 1 FROM pedidos WHERE obra_codigo = %s", (str(obra_input).strip(),))
-                        numero_oficial = c.fetchone()[0]
-                        
-                        nombre_seguro = f"OT-{numero_oficial}"
-                        fecha_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        ruta_guardado = os.path.join(CARPETA_EXCELS, f"Pedido_Local_{nombre_seguro}_{fecha_str}.xlsx")
-                        
-                        with open(ruta_guardado, "wb") as f:
-                            f.write(arch_ped.getvalue())
-                            
-                        flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
-                        
-                        query_ped = """INSERT INTO pedidos 
-                        (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo, nivel_urgencia, ruta_excel, observaciones, men) 
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id"""
-                        
-                        c.execute(query_ped, (
-                            str(numero_oficial), enc['tf'], str(obra_input).strip(), str(ceco_input).strip(), 
-                            quien, fuente, datetime.now(), flim.date(), float(neto), float(peso), 
-                            0.0, float(m2_input), 'Pendiente', 'En Proceso', 'Normal', ruta_guardado, "", ""
+                    flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
+                    
+                    query_ped = """INSERT INTO pedidos 
+                    (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo, nivel_urgencia, ruta_excel, observaciones, men) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id"""
+                    
+                    c.execute(query_ped, (
+                        str(numero_oficial), enc['tf'], str(obra_input).strip(), str(ceco_input).strip(), 
+                        quien, fuente, datetime.now(), flim.date(), float(neto), float(peso), 
+                        0.0, float(m2_input), 'Pendiente', 'En Proceso', 'Normal', ruta_guardado, "", ""
+                    ))
+                    
+                    pid = c.fetchone()[0]
+                    
+                    query_item = """INSERT INTO items_pedido 
+                    (pedido_id, item_numero, descripcion, detalles, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+                    
+                    for _, r in edited_df.iterrows():
+                        c.execute(query_item, (
+                            pid, str(r['item_num']).strip(), str(r['descripcion']).strip(), "", int(r['cantidad']),
+                            float(r['peso_total']), float(r['espesor']), str(r['material']).strip(), str(r['unidad_cobro']).strip(),
+                            float(r['precio_unitario']), float(r['total_linea']), str(r['origen_precio']).strip()
                         ))
                         
-                        # Capturamos el verdadero ID generado por la base de datos
-                        pid = c.fetchone()[0]
-                        
-                        query_item = """INSERT INTO items_pedido 
-                        (pedido_id, item_numero, descripcion, detalles, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio) 
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
-                        
-                        for _, r in edited_df.iterrows():
-                            c.execute(query_item, (
-                                pid, str(r['item_num']).strip(), str(r['descripcion']).strip(), "", int(r['cantidad']),
-                                float(r['peso_total']), float(r['espesor']), str(r['material']).strip(), str(r['unidad_cobro']).strip(),
-                                float(r['precio_unitario']), float(r['total_linea']), str(r['origen_precio']).strip()
-                            ))
-                            
-                        conn.commit()
-                        conn.close()
-                        st.success(f"¡Pedido guardado exitosamente como la orden N° {numero_oficial}!")
-                        st.rerun()
-
+                    conn.commit()
+                    conn.close()
+                    st.success(f"¡Pedido guardado exitosamente como la orden N° {numero_oficial}!")
+                    st.rerun()
 
 with t_manual:
         if 'carrito_admin' not in st.session_state:
@@ -807,7 +716,7 @@ with t_manual:
                     lbl_ayuda = f"🧮 Cálculo Teórico"
                 else:
                     conn_h = get_connection(); c_h = conn_h.cursor()
-                    c_h.execute("SELECT peso_total, cantidad FROM items_pedido WHERE upper(descripcion)=? AND cantidad>0 AND peso_total>0", (desc_m.upper().strip(),))
+                    c_h.execute("SELECT peso_total, cantidad FROM items_pedido WHERE upper(descripcion)=%s AND cantidad>0 AND peso_total>0", (desc_m.upper().strip(),))
                     rows = c_h.fetchall()
                     conn_h.close()
                     peso_hist = sum([r[0]/r[1] for r in rows])/len(rows) if rows else 0.0
@@ -889,7 +798,7 @@ with t_manual:
                         st.success(f"✅ Pieza agregada exitosamente.")
                         st.rerun()
                             
-                        st.divider()
+        st.divider()
         st.markdown("#### 📋 2. Resumen del Pedido Manual")
         
         if len(st.session_state.carrito_admin) > 0:
@@ -918,13 +827,11 @@ with t_manual:
                 if obra_manual == "Seleccione Obra..." or not quien_manual.strip() or not correo_manual.strip():
                     st.error("❌ Falta información: Obra, Solicitante y Correo son campos obligatorios.")
                 else:
-                    
-                    # --- MAGIA AQUÍ TAMBIÉN ---
                     numero_oficial = obtener_siguiente_correlativo_obra(obra_manual, tf_manual)
 
-                    conn = get_connection(); c = conn.cursor()
+                    conn = get_connection()
+                    c = conn.cursor()
                     
-                    # 🔥 CORRECCIÓN: Sintaxis nativa de PostgreSQL para "Insert or Replace"
                     query_solicitante = """
                     INSERT INTO directorio_solicitantes (nombre, correo) 
                     VALUES (%s, %s) 
@@ -933,280 +840,228 @@ with t_manual:
                     """
                     c.execute(query_solicitante, (quien_manual.strip(), correo_manual.strip()))
 
-                    flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
                     fuente_guardado = "Generado Manualmente Taller"
                     if aislacion_manual: fuente_guardado += " (Aislación)"
                     if forro_metalico_manual: fuente_guardado += " (Forro Metálico)"
                     
-                    # 1. 🚀 Insertar el pedido con cláusula RETURNING para capturar el ID real en Postgres
-        query_insert_pedido_manual = """
-        INSERT INTO pedidos 
-        (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo) 
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
-        RETURNING id
-        """
+                    try:
+                        from pandas.tseries.offsets import BusinessDay
+                        flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
+                        fecha_limite_final = flim.date()
+                    except:
+                        from datetime import timedelta
+                        fecha_limite_final = (datetime.now() + timedelta(days=7)).date()
 
-        # 🛡️ ESCUDO DEFINITIVO: Importación y cálculo local de variables (Garantiza PROBLEMS = 0)
-        from datetime import datetime, timedelta
-        import pandas as pd
-        
-        # 🕵️‍♂️ Mapeo de cajas de texto del formulario manual (Evita NameError si cambió el nombre)
-        tf_manual = str(locals().get('tf_manual', locals().get('tf_input', ''))).strip()
-        obra_manual = str(locals().get('obra_manual', locals().get('obra_input', ''))).strip()
-        ceco_manual = str(locals().get('ceco_manual', locals().get('ceco_input', ''))).strip()
-        quien_manual = str(locals().get('quien_manual', locals().get('quien', ''))).strip()
-        fuente_guardado = "Ingreso Manual"
+                    query_insert_pedido_manual = """
+                    INSERT INTO pedidos 
+                    (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+                    RETURNING id
+                    """
+                    
+                    c.execute(query_insert_pedido_manual, (
+                        str(numero_oficial), tf_manual, obra_manual, ceco_manual, quien_manual, fuente_guardado, 
+                        datetime.now(), fecha_limite_final, float(neto_total_carrito), float(peso_total_carrito), 
+                        0.0, 0.0, 'Pendiente', 'En Proceso'
+                    ))
+                    
+                    pid = c.fetchone()[0]
 
-        # 🔮 Calcular el número correlativo oficial en tiempo real para este pedido manual
-        c.execute("SELECT COALESCE(MAX(CAST(num_pedido AS INTEGER)), 0) + 1 FROM pedidos")
-        numero_oficial = c.fetchone()[0]
+                    query_insert_item_manual = """
+                    INSERT INTO items_pedido 
+                    (pedido_id, item_numero, descripcion, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio, detalles) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """
 
-        # ⚖️ Calcular totales acumulados del carrito de piezas
-        neto_total_carrito = 0.0
-        peso_total_carrito = 0.0
-        if 'carrito_admin' in st.session_state and st.session_state.carrito_admin:
-            for item in st.session_state.carrito_admin:
-                try: neto_total_carrito += float(item.get('total_linea', item.get('Precio Tot', 0)))
-                except: pass
-                try: peso_total_carrito += float(item.get('Kg', item.get('peso_total', 0)))
-                except: pass
+                    for r in st.session_state.carrito_admin:
+                        detalles_manuales = str(r.get('Detalles/Medidas', r.get('detalles', ''))).strip()
+                        if detalles_manuales in ['None', 'nan', '']: detalles_manuales = ""
 
-        # 📅 Calcular fecha límite de entrega de forma segura
-        try:
-            from pandas.tseries.offsets import BusinessDay
-            flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
-            fecha_limite_final = flim.date()
-        except:
-            fecha_limite_final = (datetime.now() + timedelta(days=7)).date()
+                        c.execute(query_insert_item_manual, (
+                            pid, str(r['item_num']), str(r['Descripción']), int(r['Cantidad']), 
+                            float(r['Kg']), float(r['Espesor']), str(r['material']), str(r['unidad_cobro']), 
+                            float(r['precio_unitario']), float(r['total_linea']), str(r['origen_precio']), detalles_manuales
+                        ))
 
-        # 1. 🚀 Query de inserción limpio para PostgreSQL
-        query_insert_pedido_manual = """
-        INSERT INTO pedidos 
-        (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo) 
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
-        RETURNING id
-        """
-        
-        # 2. 🦾 Ejecución con la tupla de variables locales 100% verificadas
-        c.execute(query_insert_pedido_manual, (
-            str(numero_oficial), tf_manual, obra_manual, ceco_manual, quien_manual, fuente_guardado, 
-            datetime.now(), fecha_limite_final, float(neto_total_carrito), float(peso_total_carrito), 
-            0.0, 0.0, 'Pendiente', 'En Proceso'
-        ))
-        
-        # 3. Captura del ID generado por la base de datos
-        pid = c.fetchone()[0]
-
-        c.execute(query_insert_pedido_manual, (
-            str(numero_oficial), tf_manual, obra_manual, ceco_manual, quien_manual, fuente_guardado, 
-            datetime.now(), flim.date(), float(neto_total_carrito), float(peso_total_carrito), 
-            0.0, 0.0, 'Pendiente', 'En Proceso'
-        ))
-        
-        # 🔥 CORRECCIÓN 1: Captura del ID nativa en PostgreSQL
-        pid = c.fetchone()[0]
-
-        # 2. 🦾 Bucle de ítems corregido con placeholders %s de Postgres
-        query_insert_item_manual = """
-        INSERT INTO items_pedido 
-        (pedido_id, item_numero, descripcion, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio, detalles) 
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-
-        for r in st.session_state.carrito_admin:
-            # Forzamos la extracción segura de detalles/medidas para que el PDF las lea
-            detalles_manuales = str(r.get('Detalles/Medidas', r.get('detalles', ''))).strip()
-            if detalles_manuales == 'None' or detalles_manuales == 'nan': 
-                detalles_manuales = ""
-
-            # 🔥 CORRECCIÓN 2: Ejecución limpia con marcadores %s
-            c.execute(query_insert_item_manual, (
-                pid, str(r['item_num']), str(r['Descripción']), int(r['Cantidad']), 
-                float(r['Kg']), float(r['Espesor']), str(r['material']), str(r['unidad_cobro']), 
-                float(r['precio_unitario']), float(r['total_linea']), str(r['origen_precio']), detalles_manuales
-            ))
-
-            conn.commit()
-            # ... debajo de tu línea 978: conn.close()
-            
-            st.session_state.carrito_admin = []
-            st.success(f"📥 ¡Pedido manual creado como {numero_oficial} y enviado a la cola de fabricación!")
-            st.rerun()
+                    conn.commit()
+                    conn.close()
+                    
+                    st.session_state.carrito_admin = []
+                    st.success(f"📥 ¡Pedido manual creado como {numero_oficial} y enviado a la cola de fabricación!")
+                    st.rerun()
         else:
             st.info("No hay piezas en este pedido todavía.")
 
+# ==========================================================
+# --- PESTAÑA 2: GESTIÓN DE PEDIDOS Y URGENCIAS ---
+# ==========================================================
 with tab2:
-        st.header("📋 Gestión de Pedidos y Urgencias")
-        conn = get_connection()
-        dfp = pd.read_sql("SELECT * FROM pedidos ORDER BY id DESC", conn)
-        conn.close()
+    st.header("📋 Gestión de Pedidos y Urgencias")
+    conn = get_connection()
+    dfp = pd.read_sql("SELECT * FROM pedidos ORDER BY id DESC", conn)
+    conn.close()
+
+    if not dfp.empty:
+        dfp['Alerta'] = dfp.apply(calcular_semaforo, axis=1)
         
-        if not dfp.empty:
-            dfp['Alerta'] = dfp.apply(calcular_semaforo, axis=1)
-            
-            filtro = st.radio("Ver registros de Base de Datos:", ["Pendientes", "Terminados", "Todos"], horizontal=True)
-            if filtro == "Pendientes": dfv = dfp[dfp['estado']=='Pendiente']
-            elif filtro == "Terminados": dfv = dfp[dfp['estado']=='Terminado']
-            else: dfv = dfp
-            
-            cols_view = ['Alerta', 'num_pedido', 'tf', 'obra_codigo', 'quien_envia', 'nivel_urgencia', 'fecha_recepcion', 'fecha_limite', 'kg_estimados', 'kg_reales', 'estado']
-            columnas_finales = [c for c in cols_view if c in dfv.columns]
-            st.dataframe(dfv[columnas_finales], use_container_width=True, hide_index=True)
-            
-            # 🛡️ Inicialización segura de variables para el bloque completo (PROBLEMS = 0)
-            fila_ped = None
-            obs_txt = ""
-            men_txt = ""
-            df_items_raw = pd.DataFrame()
+        filtro = st.radio("Ver registros de Base de Datos:", ["Pendientes", "Terminados", "Todos"], horizontal=True)
 
-            st.markdown("#### 🔍 Ver Detalle y Medidas de un Pedido")
-            st.caption("Selecciona un pedido para revisar sus especificaciones, descargar el comprobante o generar el PDF oficial.")
-            
-            col_b1, col_b2 = st.columns([1, 2])
-            
-            for c in ['num_pedido', 'obra_codigo', 'id']:
-                if c in dfp.columns:
-                    dfp[c] = dfp[c].astype(str).str.strip()
+        if filtro == "Pendientes": dfv = dfp[dfp['estado']=='Pendiente']
+        elif filtro == "Terminados": dfv = dfp[dfp['estado']=='Terminado']
+        else: dfv = dfp
+        
+        cols_view = ['Alerta', 'num_pedido', 'tf', 'obra_codigo', 'quien_envia', 'nivel_urgencia', 'fecha_recepcion', 'fecha_limite', 'kg_estimados', 'kg_reales', 'estado']
+        columnas_finales = [c for c in cols_view if c in dfv.columns]
+        st.dataframe(dfv[columnas_finales], use_container_width=True, hide_index=True)
+        
+        fila_ped = None
+        obs_txt = ""
+        men_txt = ""
+        df_items_raw = pd.DataFrame()
 
-            with col_b1:
-                pedido_a_ver = st.selectbox("Seleccionar Pedido:", dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'], key="ver_detalles_ped_final")
-                if not dfp.empty:
-                    fila_ped = dfp[dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'] == pedido_a_ver].iloc[0]
+        st.markdown("#### 🔍 Ver Detalle y Medidas de un Pedido")
+        st.caption("Selecciona un pedido para revisar sus especificaciones, descargar el comprobante o generar el PDF oficial.")
+        
+        col_b1, col_b2 = st.columns([1, 2])
+        
+        for c in ['num_pedido', 'obra_codigo', 'id']:
+            if c in dfp.columns:
+                dfp[c] = dfp[c].astype(str).str.strip()
 
-            with col_b2:
-                if fila_ped is not None:
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    id_ver = str(fila_ped['id']).strip()
-                    num_ped_ver = str(fila_ped['num_pedido']).strip()
-                    fuente_pedido = str(fila_ped.get('fuente', '')).strip().lower()
+        with col_b1:
+            pedido_a_ver = st.selectbox("Seleccionar Pedido:", dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'], key="ver_detalles_ped_final")
+            if not dfp.empty:
+                fila_ped = dfp[dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'] == pedido_a_ver].iloc[0]
 
-                    conn_ver = get_connection()
-                    df_items_raw = pd.read_sql(f"SELECT * FROM items_pedido WHERE TRIM(CAST(pedido_id AS TEXT))='{id_ver}' OR TRIM(CAST(pedido_id AS TEXT))='{num_ped_ver}'", conn_ver)
-                    obs_query = pd.read_sql(f"SELECT observaciones, men FROM pedidos WHERE TRIM(CAST(id AS TEXT))='{id_ver}'", conn_ver)
-                    conn_ver.close()
-                    
-                    if not obs_query.empty:
-                        obs_val = obs_query.iloc[0]['observaciones']
-                        obs_txt = str(obs_val).strip() if obs_val is not None and str(obs_val) not in ['None', 'nan'] else ""
-                        if 'men' in obs_query.columns:
-                            men_val = obs_query.iloc[0]['men']
-                            men_txt = str(men_val).strip() if men_val is not None and str(men_val) not in ['None', 'nan'] else ""
-
-            # --- Alertas Visuales de Fabricación ---
+        with col_b2:
             if fila_ped is not None:
-                alertas_ui = []
-                if "Aislación" in str(fila_ped.get('fuente', '')): alertas_ui.append("🧊 AISLACIÓN INTERIOR")
-                if "Forro Metálico" in str(fila_ped.get('fuente', '')): alertas_ui.append("🛡️ FORRO METÁLICO")
+                st.markdown("<br>", unsafe_allow_html=True)
+                id_ver = str(fila_ped['id']).strip()
+                num_ped_ver = str(fila_ped['num_pedido']).strip()
+                fuente_pedido = str(fila_ped.get('fuente', '')).strip().lower()
 
-                if alertas_ui or men_txt or obs_txt:
-                    msj = ""
-                    if alertas_ui: msj += f"**⚠️ ATENCIÓN:** Este pedido incluye **{', '.join(alertas_ui)}**\n\n"
-                    if men_txt: msj += f"**👤 MEN:** {men_txt} \n"
-                    if obs_txt: msj += f"**📝 Comentarios:** {obs_txt}"
-                    st.warning(msj)
+                conn_ver = get_connection()
+                df_items_raw = pd.read_sql(f"SELECT * FROM items_pedido WHERE TRIM(CAST(pedido_id AS TEXT))='{id_ver}' OR TRIM(CAST(pedido_id AS TEXT))='{num_ped_ver}'", conn_ver)
+                obs_query = pd.read_sql(f"SELECT observaciones, men FROM pedidos WHERE TRIM(CAST(id AS TEXT))='{id_ver}'", conn_ver)
+                conn_ver.close()
+                
+                if not obs_query.empty:
+                    obs_val = obs_query.iloc[0]['observaciones']
+                    obs_txt = str(obs_val).strip() if obs_val is not None and str(obs_val) not in ['None', 'nan'] else ""
+                    if 'men' in obs_query.columns:
+                        men_val = obs_query.iloc[0]['men']
+                        men_txt = str(men_val).strip() if men_val is not None and str(men_val) not in ['None', 'nan'] else ""
 
-            st.divider()
+        if fila_ped is not None:
+            alertas_ui = []
+            if "Aislación" in str(fila_ped.get('fuente', '')): alertas_ui.append("🧊 AISLACIÓN INTERIOR")
+            if "Forro Metálico" in str(fila_ped.get('fuente', '')): alertas_ui.append("🛡️ FORRO METÁLICO")
 
-            # --- COLUMNAS DE ACCIÓN (COMPROBANTE Y PDF) ---
-            col_left, col_right = st.columns(2)
-            
-            with col_left:
-                st.markdown("##### 📄 Comprobante Original")
-                if fila_ped is not None:
-                    ruta_ex = str(fila_ped.get('ruta_excel', '')).strip()
-                    if ruta_ex and ruta_ex not in ['None', 'nan'] and os.path.exists(ruta_ex):
-                        with open(ruta_ex, "rb") as f:
-                            st.download_button("📥 Descargar Excel Original", f, file_name=os.path.basename(ruta_ex), key="dl_excel_orig")
-                    else:
-                        st.warning("💡 *Planilla física no alojada en caché (Se puede construir PDF desde Base de Datos).*")
+            if alertas_ui or men_txt or obs_txt:
+                msj = ""
+                if alertas_ui: msj += f"**⚠️ ATENCIÓN:** Este pedido incluye **{', '.join(alertas_ui)}**\n\n"
+                if men_txt: msj += f"**👤 MEN:** {men_txt} \n"
+                if obs_txt: msj += f"**📝 Comentarios:** {obs_txt}"
+                st.warning(msj)
 
-            with col_right:
-                st.markdown("##### 🚀 Transformación a PDF")
-                if st.button("📄 Generar PDF (Timbre y Firma)", key="btn_pdf_timbrado_v4", type="primary"):
-                    if fila_ped is None:
-                        st.error("❌ No hay ningún pedido seleccionado.")
-                    else:
-                        with st.spinner("Generando PDF oficial de despacho..."):
-                            try:
-                                ruta_ex = str(fila_ped.get('ruta_excel', '')).strip()
-                                if ruta_ex in ['None', 'nan', '']: ruta_ex = ""
-                                fuente_pedido = str(fila_ped.get('fuente', '')).strip().lower()
-                                es_masiva = ruta_ex.endswith(('.xlsx', '.xls', '.xlsm')) or "excel" in fuente_pedido or "masiva" in fuente_pedido
+        st.divider()
 
-                                df_para_pdf = pd.DataFrame()
+        col_left, col_right = st.columns(2)
+        
+        with col_left:
+            st.markdown("##### 📄 Comprobante Original")
+            if fila_ped is not None:
+                ruta_ex = str(fila_ped.get('ruta_excel', '')).strip()
+                if ruta_ex and ruta_ex not in ['None', 'nan'] and os.path.exists(ruta_ex):
+                    with open(ruta_ex, "rb") as f:
+                        st.download_button("📥 Descargar Excel Original", f, file_name=os.path.basename(ruta_ex), key="dl_excel_orig")
+                else:
+                    st.warning("💡 *Planilla física no alojada en caché (Se puede construir PDF desde Base de Datos).*")
 
-                                # Caso 1: Procesar filas de ingeniería desde el Excel si está disponible
-                                if es_masiva and ruta_ex and os.path.exists(ruta_ex):
-                                    df_raw = pd.read_excel(ruta_ex, header=None)
-                                    start_row = 28
-                                    for idx, row_vals in df_raw.iterrows():
-                                        if str(row_vals[0]).strip().upper() == "Nº" or "DESCRIPCION" in str(row_vals[5]).strip().upper():
-                                            start_row = idx + 1
-                                            break
-                                    
-                                    clean_rows = []
-                                    for idx in range(start_row, len(df_raw)):
-                                        r_val = df_raw.iloc[idx]
-                                        item_id = r_val[0]
-                                        if pd.isna(item_id) or str(item_id).strip() == "": continue
-                                        
-                                        tipo_pieza = str(r_val[5]).strip()
-                                        val_a = str(r_val[9]).strip() if pd.notna(r_val[9]) else ""
-                                        val_b = str(r_val[10]).strip() if pd.notna(r_val[10]) else ""
-                                        val_h = str(r_val[18]).strip() if pd.notna(r_val[18]) else ""
-                                        val_ue = str(r_val[26]).strip() if pd.notna(r_val[26]) else ""
-                                        val_us = str(r_val[28]).strip() if pd.notna(r_val[28]) else ""
-                                        
-                                        dims = []
-                                        if val_a: dims.append(f"A:{val_a}cm")
-                                        if val_b: dims.append(f"B:{val_b}cm")
-                                        if val_h: dims.append(f"H:{val_h}")
-                                        
-                                        parts = []
-                                        if dims: parts.append("Dim: " + " ".join(dims))
-                                        if val_ue or val_us: parts.append(f"Unión: {val_ue} / {val_us}".strip(" /"))
-                                        detalles_finales_str = " | ".join(parts)
-                                        
-                                        clean_rows.append({
-                                            'item_numero': str(item_id).strip(),
-                                            'descripcion': tipo_pieza,
-                                            'detalles': detalles_finales_str,
-                                            'cantidad': r_val[8] if pd.notna(r_val[8]) else 1,
-                                            'espesor': r_val[31] if pd.notna(r_val[31]) else 0.5,
-                                            'peso_total': r_val[33] if pd.notna(r_val[33]) else 0.0
-                                        })
-                                    df_para_pdf = pd.DataFrame(clean_rows)
+        with col_right:
+            st.markdown("##### 🚀 Transformación a PDF")
+            if st.button("📄 Generar PDF (Timbre y Firma)", key="btn_pdf_timbrado_v4", type="primary"):
+                if fila_ped is None:
+                    st.error("❌ No hay ningún pedido seleccionado.")
+                else:
+                    with st.spinner("Generando PDF oficial de despacho..."):
+                        try:
+                            ruta_ex = str(fila_ped.get('ruta_excel', '')).strip()
+                            if ruta_ex in ['None', 'nan', '']: ruta_ex = ""
+                            fuente_pedido = str(fila_ped.get('fuente', '')).strip().lower()
+                            es_masiva = ruta_ex.endswith(('.xlsx', '.xls', '.xlsm')) or "excel" in fuente_pedido or "masiva" in fuente_pedido
 
-                                # Caso 2: Respaldo automático desde Supabase (Pedidos manuales o excels borrados)
-                                if df_para_pdf.empty:
-                                    if not df_items_raw.empty:
-                                        df_para_pdf = df_items_raw.copy()
-                                        if 'item_numero' not in df_para_pdf.columns and 'item_num' in df_para_pdf.columns:
-                                            df_para_pdf['item_numero'] = df_para_pdf['item_num']
-                                    else:
-                                        st.error("❌ No se encontraron registros de piezas para este pedido.")
-                                        st.stop()
+                            df_para_pdf = pd.DataFrame()
 
-                                # 🚀 Ejecutar el generador FPDF nativo interno
-                                ruta_pdf_final = generar_pdf_cliente(
-                                    pedido_num=fila_ped['num_pedido'],
-                                    tf=fila_ped['tf'],
-                                    obra=fila_ped['obra_codigo'],
-                                    ceco=fila_ped['ceco'],
-                                    solicitante=fila_ped['quien_envia'],
-                                    items_df=df_para_pdf, 
-                                    kg_est=fila_ped['kg_estimados'],
-                                    observaciones=obs_txt,
-                                    men=men_txt
-                                )
+                            if es_masiva and ruta_ex and os.path.exists(ruta_ex):
+                                df_raw = pd.read_excel(ruta_ex, header=None)
+                                start_row = 28
+                                for idx, row_vals in df_raw.iterrows():
+                                    if str(row_vals[0]).strip().upper() == "Nº" or "DESCRIPCION" in str(row_vals[5]).strip().upper():
+                                        start_row = idx + 1
+                                        break
                                 
-                                if ruta_pdf_final and os.path.exists(ruta_pdf_final):
-                                    with open(ruta_pdf_final, "rb") as f:
-                                        st.download_button("📥 Descargar PDF Terminado (Timbrado)", f, file_name=f"Pedido_Despacho_OT-{fila_ped['num_pedido']}.pdf", key="dl_pdf_final_perfecto_v4")
+                                clean_rows = []
+                                for idx in range(start_row, len(df_raw)):
+                                    r_val = df_raw.iloc[idx]
+                                    item_id = r_val[0]
+                                    if pd.isna(item_id) or str(item_id).strip() == "": continue
+                                    
+                                    tipo_pieza = str(r_val[5]).strip()
+                                    val_a = str(r_val[9]).strip() if pd.notna(r_val[9]) else ""
+                                    val_b = str(r_val[10]).strip() if pd.notna(r_val[10]) else ""
+                                    val_h = str(r_val[18]).strip() if pd.notna(r_val[18]) else ""
+                                    val_ue = str(r_val[26]).strip() if pd.notna(r_val[26]) else ""
+                                    val_us = str(r_val[28]).strip() if pd.notna(r_val[28]) else ""
+                                    
+                                    dims = []
+                                    if val_a: dims.append(f"A:{val_a}cm")
+                                    if val_b: dims.append(f"B:{val_b}cm")
+                                    if val_h: dims.append(f"H:{val_h}")
+                                    
+                                    parts = []
+                                    if dims: parts.append("Dim: " + " ".join(dims))
+                                    if val_ue or val_us: parts.append(f"Unión: {val_ue} / {val_us}".strip(" /"))
+                                    detalles_finales_str = " | ".join(parts)
+                                    
+                                    clean_rows.append({
+                                        'item_numero': str(item_id).strip(),
+                                        'descripcion': tipo_pieza,
+                                        'detalles': detalles_finales_str,
+                                        'cantidad': r_val[8] if pd.notna(r_val[8]) else 1,
+                                        'espesor': r_val[31] if pd.notna(r_val[31]) else 0.5,
+                                        'peso_total': r_val[33] if pd.notna(r_val[33]) else 0.0
+                                    })
+                                df_para_pdf = pd.DataFrame(clean_rows)
+
+                            if df_para_pdf.empty:
+                                if not df_items_raw.empty:
+                                    df_para_pdf = df_items_raw.copy()
+                                    if 'item_numero' not in df_para_pdf.columns and 'item_num' in df_para_pdf.columns:
+                                        df_para_pdf['item_numero'] = df_para_pdf['item_num']
                                 else:
-                                    st.error("❌ Ocurrió un inconveniente al empaquetar el archivo PDF definitivo.")
-                            except Exception as e:
-                                st.error(f"Error procesando la transformación del documento: {e}")
+                                    st.error("❌ No se encontraron registros de piezas para este pedido.")
+                                    st.stop()
+
+                            ruta_pdf_final = generar_pdf_cliente(
+                                pedido_num=fila_ped['num_pedido'],
+                                tf=fila_ped['tf'],
+                                obra=fila_ped['obra_codigo'],
+                                ceco=fila_ped['ceco'],
+                                solicitante=fila_ped['quien_envia'],
+                                items_df=df_para_pdf, 
+                                kg_est=fila_ped['kg_estimados'],
+                                observaciones=obs_txt,
+                                men=men_txt
+                            )
+                            
+                            if ruta_pdf_final and os.path.exists(ruta_pdf_final):
+                                with open(ruta_pdf_final, "rb") as f:
+                                    st.download_button("📥 Descargar PDF Terminado (Timbrado)", f, file_name=f"Pedido_Despacho_OT-{fila_ped['num_pedido']}.pdf", key="dl_pdf_final_perfecto_v4")
+                            else:
+                                st.error("❌ Ocurrió un inconveniente al empaquetar el archivo PDF definitivo.")
+                        except Exception as e:
+                            st.error(f"Error procesando la transformación del documento: {e}")
 
         st.subheader("🚀 Fila de Producción y Urgencias")
         pend_fifo = dfp[dfp['estado']=='Pendiente'].copy()
@@ -1228,7 +1083,7 @@ with tab2:
                 nuevo_nivel = st.radio("Estado:", ["Normal", "ALTA"], horizontal=True)
                 if st.button("Aplicar Nivel", key="btn_ap_nivel"):
                     conn = get_connection(); c = conn.cursor()
-                    c.execute("UPDATE pedidos SET nivel_urgencia=? WHERE id=?", (nuevo_nivel, int(id_urgencia)))
+                    c.execute("UPDATE pedidos SET nivel_urgencia=%s WHERE id=%s", (nuevo_nivel, int(id_urgencia)))
                     conn.commit(); conn.close(); st.success("Prioridad actualizada"); st.rerun()
 
             pend_fifo['sort_urgencia'] = pend_fifo['nivel_urgencia'].apply(lambda x: 0 if str(x) == 'ALTA' else 1)
@@ -1298,7 +1153,7 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                 fecha_c = st.date_input("Fecha Término", value=datetime.now())
                 if st.button("Confirmar Cierre de Pedido", key="btn_cierre", type="primary"):
                     conn=get_connection(); c=conn.cursor()
-                    c.execute("UPDATE pedidos SET estado='Terminado', fecha_termino=?, kg_reales=? WHERE id=?", (fecha_c, peso_r, int(id_c)))
+                    c.execute("UPDATE pedidos SET estado='Terminado', fecha_termino=%s, kg_reales=%s WHERE id=%s", (fecha_c, peso_r, int(id_c)))
                     conn.commit(); conn.close(); st.success("Cerrado y guardado en historial."); st.rerun()
 
         with c2:
@@ -1355,7 +1210,6 @@ Quedamos a su disposición para coordinar la entrega.\n\nSaludos cordiales,\nDep
         st.subheader("🚚 PASO 4: Registrar Salida a Terreno (Despacho)")
         st.caption("Marca los pedidos que ya fueron retirados físicamente del taller para descontarlos de la tarjeta de Listos en Taller.")
         
-        # Prevenimos nulos en pedidos antiguos
         if 'estado_despacho' not in dfp.columns: dfp['estado_despacho'] = 'En Taller'
         dfp['estado_despacho'] = dfp['estado_despacho'].fillna('En Taller')
         
@@ -1371,7 +1225,7 @@ Quedamos a su disposición para coordinar la entrega.\n\nSaludos cordiales,\nDep
                     id_despacho = df_listos_taller[df_listos_taller['num_pedido'].astype(str) + " / " + df_listos_taller['obra_codigo'] == sel_despacho].iloc[0]['id']
                     conn = get_connection(); c = conn.cursor()
                     fecha_hoy = datetime.now().date()
-                    c.execute("UPDATE pedidos SET estado_despacho='Despachado', fecha_despacho=? WHERE id=?", (fecha_hoy, int(id_despacho)))
+                    c.execute("UPDATE pedidos SET estado_despacho='Despachado', fecha_despacho=%s WHERE id=%s", (fecha_hoy, int(id_despacho)))
                     conn.commit(); conn.close()
                     st.success("¡Pedido marcado como despachado!")
                     st.rerun()
@@ -1385,8 +1239,8 @@ Quedamos a su disposición para coordinar la entrega.\n\nSaludos cordiales,\nDep
             if st.button("Eliminar Definitivamente", key="btn_elim_ped_bd"):
                 idd = int(dels.split("ID: ")[1].split(" |")[0])
                 conn=get_connection();c=conn.cursor()
-                c.execute("DELETE FROM items_pedido WHERE pedido_id=?",(idd,))
-                c.execute("DELETE FROM pedidos WHERE id=?",(idd,))
+                c.execute("DELETE FROM items_pedido WHERE pedido_id=%s",(idd,))
+                c.execute("DELETE FROM pedidos WHERE id=%s",(idd,))
                 conn.commit();conn.close();st.rerun()
 
 # --- PESTAÑA 3: CONFIGURACIÓN Y MAESTROS ---
@@ -1433,7 +1287,7 @@ with tab3:
             conn = get_connection(); c = conn.cursor()
             for _, row in edited_obras.iterrows():
                 k_hist_antiguo = float(row.get('kg_historicos', 0.0))
-                c.execute("UPDATE maestro_obras SET kg_contrato=?, kg_adicionales=?, kg_hist_galv=?, kg_hist_fe=?, kg_hist_inox=?, kg_historicos=? WHERE tf=?", 
+                c.execute("UPDATE maestro_obras SET kg_contrato=%s, kg_adicionales=%s, kg_hist_galv=%s, kg_hist_fe=%s, kg_hist_inox=%s, kg_historicos=%s WHERE tf=%s", 
                           (float(row['kg_contrato']), float(row['kg_adicionales']), float(row['kg_hist_galv']), float(row['kg_hist_fe']), float(row['kg_hist_inox']), k_hist_antiguo, row['tf']))
             conn.commit(); conn.close()
             st.success("✅ ¡Kilos actualizados correctamente!")
@@ -1453,7 +1307,7 @@ with tab3:
                 dfn.columns = dfn.columns.str.upper().str.strip()
                 conn=get_connection(); c=conn.cursor(); c.execute("DELETE FROM lista_precios")
                 for _,r in dfn.iterrows():
-                    c.execute("INSERT INTO lista_precios (item, unidad, precio, material) VALUES (?,?,?,?)", (str(r['ITEM']), str(r.get('UN','kg')), r['PRECIO'], str(r.get('MATERIAL','Galvanizado'))))
+                    c.execute("INSERT INTO lista_precios (item, unidad, precio, material) VALUES (%s,%s,%s,%s)", (str(r['ITEM']), str(r.get('UN','kg')), r['PRECIO'], str(r.get('MATERIAL','Galvanizado'))))
                 conn.commit(); conn.close(); st.success("Precios actualizados."); st.rerun()
         
         with c_up2:
@@ -1470,7 +1324,7 @@ with tab3:
                     nom_v = str(r.get('NOMBRE', r.get('OBRA', ''))).strip()
                     kg_v = float(r.get('KG_CONTRATO', 0.0))
                     kg_a = float(r.get('KG_ADICIONALES', 0.0))
-                    c.execute("INSERT INTO maestro_obras (tf, ceco, nombre, kg_contrato, kg_adicionales) VALUES (?,?,?,?,?)", (tf_v, ceco_v, nom_v, kg_v, kg_a))
+                    c.execute("INSERT INTO maestro_obras (tf, ceco, nombre, kg_contrato, kg_adicionales) VALUES (%s,%s,%s,%s,%s)", (tf_v, ceco_v, nom_v, kg_v, kg_a))
                 conn.commit(); conn.close(); st.success("Obras actualizadas."); st.rerun()
 
         st.divider()
@@ -1489,14 +1343,14 @@ with tab3:
                     if n_item.strip():
                         try:
                             conn=get_connection(); c=conn.cursor()
-                            c.execute("INSERT INTO lista_precios (item, unidad, precio, material) VALUES (?,?,?,?)", (n_item.strip(), n_uni, n_prec, n_mat))
+                            c.execute("INSERT INTO lista_precios (item, unidad, precio, material) VALUES (%s,%s,%s,%s)", (n_item.strip(), n_uni, n_prec, n_mat))
                             conn.commit(); conn.close(); st.success("Precio Guardado."); st.rerun()
                         except Exception as e: st.error(e)
                     else:
                         st.warning("El nombre del ítem es obligatorio.")
         with col_pr2:
             conn = get_connection()
-            try: df_pre = pd.read_sql("SELECT rowid as id_bd, item, material, precio FROM lista_precios", conn)
+            try: df_pre = pd.read_sql("SELECT id as id_bd, item, material, precio FROM lista_precios", conn)
             except: df_pre = pd.DataFrame()
             conn.close()
             if not df_pre.empty:
@@ -1504,7 +1358,7 @@ with tab3:
                 del_pre = st.selectbox("Eliminar Precio", df_pre['display'])
                 if st.button("Eliminar Precio", key="btn_elim_precio"):
                     rowid_del = del_pre.split(" - ")[0].strip()
-                    conn=get_connection(); c=conn.cursor(); c.execute("DELETE FROM lista_precios WHERE rowid=?", (rowid_del,)); conn.commit(); conn.close(); st.rerun()
+                    conn=get_connection(); c=conn.cursor(); c.execute("DELETE FROM lista_precios WHERE id=%s", (int(rowid_del),)); conn.commit(); conn.close(); st.rerun()
             else:
                 st.info("No hay precios registrados.")
 
@@ -1521,7 +1375,7 @@ with tab3:
                     if n_tf and n_nom:
                         try:
                             conn=get_connection(); c=conn.cursor()
-                            c.execute("INSERT INTO maestro_obras (tf, ceco, nombre) VALUES (?, ?, ?)", (n_tf.strip(), n_ceco.strip(), n_nom.strip()))
+                            c.execute("INSERT INTO maestro_obras (tf, ceco, nombre) VALUES (%s, %s, %s)", (n_tf.strip(), n_ceco.strip(), n_nom.strip()))
                             conn.commit(); conn.close(); st.success("Guardado."); st.rerun()
                         except Exception as e: st.error(e)
                     else:
@@ -1535,7 +1389,7 @@ with tab3:
                 del_obra = st.selectbox("Eliminar Obra", df_obr['tf'].astype(str) + " - " + df_obr['nombre'].astype(str))
                 if st.button("Eliminar Obra", key="btn_elim_obra"):
                     tf_del = del_obra.split(" - ")[0].strip()
-                    conn=get_connection(); c=conn.cursor(); c.execute("DELETE FROM maestro_obras WHERE tf=?", (tf_del,)); conn.commit(); conn.close(); st.rerun()
+                    conn=get_connection(); c=conn.cursor(); c.execute("DELETE FROM maestro_obras WHERE tf=%s", (tf_del,)); conn.commit(); conn.close(); st.rerun()
 
         st.divider()
         st.markdown("##### 📧 Directorio de Solicitantes (Correos Automáticos)")
@@ -1548,7 +1402,8 @@ with tab3:
                     if n_sol and c_sol:
                         try:
                             conn=get_connection(); c=conn.cursor()
-                            c.execute("INSERT OR REPLACE INTO directorio_solicitantes (nombre, correo) VALUES (?, ?)", (n_sol.strip(), c_sol.strip()))
+                            query_sol = "INSERT INTO directorio_solicitantes (nombre, correo) VALUES (%s, %s) ON CONFLICT (nombre) DO UPDATE SET correo = EXCLUDED.correo"
+                            c.execute(query_sol, (n_sol.strip(), c_sol.strip()))
                             conn.commit(); conn.close(); st.success("Guardado."); st.rerun()
                         except Exception as e: st.error(e)
         with col_dir2:
@@ -1560,7 +1415,7 @@ with tab3:
             if not df_dir.empty:
                 del_nom = st.selectbox("Eliminar Contacto", df_dir['nombre'])
                 if st.button("Eliminar Contacto", key="btn_elim_cont_bd"):
-                    conn=get_connection(); c=conn.cursor(); c.execute("DELETE FROM directorio_solicitantes WHERE nombre=?", (del_nom,)); conn.commit(); conn.close(); st.rerun()
+                    conn=get_connection(); c=conn.cursor(); c.execute("DELETE FROM directorio_solicitantes WHERE nombre=%s", (del_nom,)); conn.commit(); conn.close(); st.rerun()
 
 with tab4:
     st.header("📊 Informe Detallado para Carátula EDP")
@@ -1640,59 +1495,43 @@ with tab4:
                     df_ajustado = pd.concat([df_ajustado, df_p])
         res = []
 
-    # 🔥 TRADUCTOR INTELIGENTE EXTENDIDO (Soporta múltiples variaciones de nombres de columna)
     mapeo_columnas = {}
-    for col in df_ajustado.columns:
-        col_limpia = str(col).strip().lower()
-        
-        # Variaciones para Centro de Costos
-        if col_limpia in ['ceco', 'centro de costo', 'centro de costos', 'centro costo', 'centro costos', 'cc', 'c.c.', 'n° ceco']:
-            mapeo_columnas[col] = 'ceco'
-            
-        # Variaciones para el Código de la Obra
-        elif col_limpia in ['obra_codigo', 'obra_cod', 'obra', 'obra código', 'código obra', 'codigo obra', 'cod_obra', 'cod. obra', 'n° obra']:
-            mapeo_columnas[col] = 'obra_codigo'
-            
-        # Variaciones para el Tipo de Estado de Pago
-        elif col_limpia in ['tipo_edp', 'tipo edp', 'tipo']:
-            mapeo_columnas[col] = 'TIPO_EDP'
-            
-        # Variaciones para Pesos
-        elif col_limpia in ['peso_total', 'pesototal', 'peso total', 'kg', 'kilogramos', 'peso']:
-            mapeo_columnas[col] = 'peso_total'
-            
-        # Variaciones para Totales de línea
-        elif col_limpia in ['total_linea', 'totallinea', 'total_línea', 'total linea', 'total línea', 'total']:
-            mapeo_columnas[col] = 'total_linea'
+    if not df_ajustado.empty:
+        for col in df_ajustado.columns:
+            col_limpia = str(col).strip().lower()
+            if col_limpia in ['ceco', 'centro de costo', 'centro de costos', 'centro costo', 'centro costos', 'cc', 'c.c.', 'n° ceco']: mapeo_columnas[col] = 'ceco'
+            elif col_limpia in ['obra_codigo', 'obra_cod', 'obra', 'obra código', 'código obra', 'codigo obra', 'cod_obra', 'cod. obra', 'n° obra']: mapeo_columnas[col] = 'obra_codigo'
+            elif col_limpia in ['tipo_edp', 'tipo edp', 'tipo']: mapeo_columnas[col] = 'TIPO_EDP'
+            elif col_limpia in ['peso_total', 'pesototal', 'peso total', 'kg', 'kilogramos', 'peso']: mapeo_columnas[col] = 'peso_total'
+            elif col_limpia in ['total_linea', 'totallinea', 'total_línea', 'total linea', 'total línea', 'total']: mapeo_columnas[col] = 'total_linea'
 
-    df_ajustado.rename(columns=mapeo_columnas, inplace=True)
+        df_ajustado.rename(columns=mapeo_columnas, inplace=True)
 
-    # 🛡️ ESCUDO DE SEGURIDAD: Valida si las columnas críticas existen antes de agrupar
-    columnas_actuales = df_ajustado.columns.tolist()
-    if 'ceco' not in columnas_actuales or 'obra_codigo' not in columnas_actuales:
-        st.error("⚠️ **Error en los encabezados del Excel:** El archivo subido no contiene las columnas necesarias de 'CECO' o 'Obra'.")
-        st.info(f"**Columnas detectadas en tu archivo:** {columnas_actuales}")
-        st.warning("Por favor, verifica que los nombres de las columnas en el Excel coincidan o avísame para agregar la nueva variación al traductor.")
-        st.stop() # Detiene la app limpiamente sin lanzar pantallas rojas de código
-        for (ceco, obra), g in df_ajustado.groupby(['ceco', 'obra_codigo']):
-            res.append({
-                "CECO": ceco, "OBRA": obra,
-                "KG_GALV": round(g[g['TIPO_EDP']=='GALV']['peso_total'].sum(), 1), "$ GALV": round(g[g['TIPO_EDP']=='GALV']['total_linea'].sum(), 0),
-                "KG_FE": round(g[g['TIPO_EDP']=='FE']['peso_total'].sum(), 1), "$ FE": round(g[g['TIPO_EDP']=='FE']['total_linea'].sum(), 0),
-                "KG_ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['peso_total'].sum(), 1), "$ ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['total_linea'].sum(), 0)
-            })
+        columnas_actuales = df_ajustado.columns.tolist()
+        if 'ceco' not in columnas_actuales or 'obra_codigo' not in columnas_actuales:
+            st.error("⚠️ **Error en los encabezados:** Faltan las columnas necesarias de 'CECO' o 'Obra'.")
+            st.info(f"**Columnas detectadas:** {columnas_actuales}")
+        else:
+            for (ceco, obra), g in df_ajustado.groupby(['ceco', 'obra_codigo']):
+                res.append({
+                    "CECO": ceco, "OBRA": obra,
+                    "KG_GALV": round(g[g['TIPO_EDP']=='GALV']['peso_total'].sum(), 1), "$ GALV": round(g[g['TIPO_EDP']=='GALV']['total_linea'].sum(), 0),
+                    "KG_FE": round(g[g['TIPO_EDP']=='FE']['peso_total'].sum(), 1), "$ FE": round(g[g['TIPO_EDP']=='FE']['total_linea'].sum(), 0),
+                    "KG_ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['peso_total'].sum(), 1), "$ ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['total_linea'].sum(), 0)
+                })
 
-        df_edp_final = pd.DataFrame(res)
-        totales = pd.DataFrame([{"CECO": "TOTALES", "OBRA": "---", "KG_GALV": df_edp_final["KG_GALV"].sum(), "$ GALV": df_edp_final["$ GALV"].sum(), "KG_FE": df_edp_final["KG_FE"].sum(), "$ FE": df_edp_final["$ FE"].sum(), "KG_ESP": df_edp_final["KG_ESP"].sum(), "$ ESP": df_edp_final["$ ESP"].sum()}])
-        df_edp_final = pd.concat([df_edp_final, totales], ignore_index=True)
-                    
-        st.write("### Tabla de Datos (Selecciona y copia directamente)")
-        st.dataframe(df_edp_final, use_container_width=True, hide_index=True)
-        st.download_button("📥 Descargar CSV para Excel", df_edp_final.to_csv(index=False).encode('utf-8-sig'), "EDP_Periodo.csv", "text/csv")
-                    
+            df_edp_final = pd.DataFrame(res)
+            if not df_edp_final.empty:
+                totales = pd.DataFrame([{"CECO": "TOTALES", "OBRA": "---", "KG_GALV": df_edp_final["KG_GALV"].sum(), "$ GALV": df_edp_final["$ GALV"].sum(), "KG_FE": df_edp_final["KG_FE"].sum(), "$ FE": df_edp_final["$ FE"].sum(), "KG_ESP": df_edp_final["KG_ESP"].sum(), "$ ESP": df_edp_final["$ ESP"].sum()}])
+                df_edp_final = pd.concat([df_edp_final, totales], ignore_index=True)
+                            
+                st.write("### Tabla de Datos (Selecciona y copia directamente)")
+                st.dataframe(df_edp_final, use_container_width=True, hide_index=True)
+                st.download_button("📥 Descargar CSV para Excel", df_edp_final.to_csv(index=False).encode('utf-8-sig'), "EDP_Periodo.csv", "text/csv")
+                            
         st.divider()
         st.markdown("### 🧊 Calculadora de Bono por Aislación Interior")
-        st.info("Marque manualmente en la columna 'Aplica Bono' los pedidos que llevan aislación interior (Ej: pedidos de Natanael Aviel confirmados por correo). El bono se calcula a $500 por M2.")
+        st.info("Marque manualmente en la columna 'Aplica Bono' los pedidos que llevan aislación interior.")
                     
         df_bono = df_f[['num_pedido', 'obra_codigo', 'quien_envia', 'm2_totales']].copy()
         df_bono['Aplica Bono'] = False 
@@ -1722,7 +1561,8 @@ with tab4:
             st.caption("No hay M2 seleccionados. Marque la casilla correspondiente para calcular el monto.")
 
     else:
-        st.warning("No se encontraron pedidos con los filtros seleccionados.")                        
+        st.warning("No se encontraron pedidos con los filtros seleccionados.")
+
 with tab5:
     st.header("📈 Dashboard de Producción")
     conn = get_connection()
@@ -1730,7 +1570,6 @@ with tab5:
     df_all_items = pd.read_sql("SELECT * FROM items_pedido", conn)
     conn.close()
 
-    # 🔥 ESCUDO DE LIMPIEZA CONTRA ESPACIOS OCULTOS EN LA NUBE
     df_all_ped.columns = [str(c).lower().strip() for c in df_all_ped.columns]
     df_all_items.columns = [str(c).lower().strip() for c in df_all_items.columns]
 
@@ -1738,12 +1577,14 @@ with tab5:
         df_all_ped['num_pedido'] = df_all_ped['num_pedido'].astype(str).str.strip().str.upper()
     if 'num_pedido' in df_all_items.columns:
         df_all_items['num_pedido'] = df_all_items['num_pedido'].astype(str).str.strip().str.upper()
+    
     if not df_all_ped.empty:
         c1, c2, c3 = st.columns(3)
         c1.metric("Total Pedidos", len(df_all_ped))
         c2.metric("Pendientes", len(df_all_ped[df_all_ped['estado']=='Pendiente']))
         c3.metric("Kilos Estimados Totales", f"{df_all_ped['kg_estimados'].sum():,.1f} Kg")
         st.divider()
+        
         g1, g2 = st.columns(2)
         with g1:
             st.subheader("⚖️ Kilos por Obra (Top 10)")
@@ -1812,14 +1653,12 @@ with tab5:
             df_merge['Fierro (FE)'] = df_merge['FE'] + df_merge['kg_hist_fe']
             df_merge['Acero Inox'] = df_merge['INOX'] + df_merge['kg_hist_inox']
             
-            # --- REEMPLAZAR DESDE AQUÍ ---
             st.subheader("📊 Avance y Saldo de Contratos (SOLO GALVANIZADO)")
             st.caption("Visualiza el total del contrato, lo que ya se fabricó y **el saldo que va restando**.")
             
             df_general = df_merge[(df_merge['kg_contrato'] > 0) | (df_merge['Galvanizado Total'] > 0)].copy()
             
             if not df_general.empty:
-                # LA MAGIA MATEMÁTICA: Calculamos explícitamente el saldo restante
                 df_general['Total Contratado'] = df_general['kg_contrato'] + df_general['kg_adicionales']
                 df_general['Saldo Restante'] = df_general['Total Contratado'] - df_general['Galvanizado Total']
                 
@@ -1833,7 +1672,6 @@ with tab5:
                 df_melt = df_plot_general.melt('obra_codigo', var_name='Categoría', value_name='Kilos')
                 df_melt_labels = df_melt[df_melt['Kilos'] != 0] 
                 
-                # Colores intuitivos: Contrato (Azul), Fabricado (Naranja), Saldo Restante (Verde)
                 color_scale_avance = alt.Scale(
                     domain=['1. Total Contrato', '2. Ya Fabricado', '3. Saldo Restante'],
                     range=['#2980b9', '#e67e22', '#27ae60'] 
@@ -1848,60 +1686,4 @@ with tab5:
                 bars = base.mark_bar()
                 text = alt.Chart(df_melt_labels).mark_text(
                     align='center', baseline='bottom', dy=-5, fontSize=11, fontWeight='bold'
-                ).encode(
-                    x=alt.X('obra_codigo:N'),
-                    y=alt.Y('Kilos:Q'),
-                    xOffset='Categoría:N',
-                    text=alt.Text('Kilos:Q', format='.0f') 
-                )
-                st.altair_chart((bars + text).properties(height=400), use_container_width=True)
-
-                st.markdown("---")
-                st.subheader("⚖️ Saldo Restante por Obra (Galvanizado)")
-                st.caption("✅ Valores Positivos (+): **Kilos que aún quedan por fabricar** para completar el contrato.<br> ❌ Valores Negativos (-): **Kilos en Sobregiro** (Se fabricó más de lo contratado).", unsafe_allow_html=True)
-                
-                df_plot_bal = df_general[['obra_codigo', 'Saldo Restante']].set_index('obra_codigo')
-                st.bar_chart(df_plot_bal)
-
-            else:
-                st.info("Ingresa los datos del contrato en Configuración para ver las comparativas.")
-            # --- HASTA AQUÍ EL REEMPLAZO ---
-                    
-            st.divider()
-            st.subheader("🧱 Total Kilos Fabricados por Material")
-            st.caption("Incluye los Kilos Históricos ingresados manualmente. Cada color representa un material distinto.")
-            
-            df_plot_mat = df_merge[['obra_codigo', 'Galvanizado Total', 'Fierro (FE)', 'Acero Inox']].copy()
-            df_plot_mat = df_plot_mat[(df_plot_mat[['Galvanizado Total', 'Fierro (FE)', 'Acero Inox']] != 0).any(axis=1)]
-            
-            if not df_plot_mat.empty:
-                df_melt_mat = df_plot_mat.melt('obra_codigo', var_name='Material', value_name='Kilos')
-                df_melt_mat_labels = df_melt_mat[df_melt_mat['Kilos'] > 0]
-                
-                color_scale = alt.Scale(
-                    domain=['Galvanizado Total', 'Fierro (FE)', 'Acero Inox'],
-                    range=['#3498db', '#e67e22', '#7f8c8d'] 
-                )
-
-                base_mat = alt.Chart(df_melt_mat).encode(
-                    x=alt.X('obra_codigo:N', title='Obra', axis=alt.Axis(labelAngle=-45)),
-                    y=alt.Y('Kilos:Q', title='Kg'),
-                    color=alt.Color('Material:N', scale=color_scale, legend=alt.Legend(title="", orient='top')),
-                    xOffset='Material:N'
-                )
-                bars_mat = base_mat.mark_bar()
-                text_mat = alt.Chart(df_melt_mat_labels).mark_text(
-                    align='center', baseline='bottom', dy=-5, fontSize=11, fontWeight='bold'
-                ).encode(
-                    x=alt.X('obra_codigo:N'),
-                    y=alt.Y('Kilos:Q'),
-                    xOffset='Material:N',
-                    text=alt.Text('Kilos:Q', format='.0f')
-                )
-                
-                st.altair_chart((bars_mat + text_mat).properties(height=400), use_container_width=True)
-            else:
-                st.info("Cierra pedidos o ingresa históricos para ver el gráfico de materiales.")
-
-
-
+                ).encode()
