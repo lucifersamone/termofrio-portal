@@ -828,72 +828,76 @@ with t_manual:
                 if obra_manual == "Seleccione Obra..." or not quien_manual.strip() or not correo_manual.strip():
                     st.error("❌ Falta información: Obra, Solicitante y Correo son campos obligatorios.")
                 else:
-                    numero_oficial = obtener_siguiente_correlativo_obra(obra_manual, tf_manual)
-
-                    conn = get_connection()
-                    c = conn.cursor()
-                    
-        # Reemplaza desde la línea 836 hasta la 842 por esto:
-                c.execute("SELECT id FROM directorio_solicitantes WHERE nombre = %s", (quien_manual.strip(),))
-                resultado = c.fetchone()
-
-                if resultado:
-                    c.execute("UPDATE directorio_solicitantes SET correo = %s WHERE nombre = %s", 
-                            (correo_manual.strip(), quien_manual.strip()))
-                else:
-                    c.execute("INSERT INTO directorio_solicitantes (nombre, correo) VALUES (%s, %s)", 
-                      (quien_manual.strip(), correo_manual.strip()))
-                    fuente_guardado = "Generado Manualmente Taller"
-                    if aislacion_manual: fuente_guardado += " (Aislación)"
-                    if forro_metalico_manual: fuente_guardado += " (Forro Metálico)"
-                    
                     try:
-                        from pandas.tseries.offsets import BusinessDay
-                        flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
-                        fecha_limite_final = flim.date()
-                    except:
-                        from datetime import timedelta
-                        fecha_limite_final = (datetime.now() + timedelta(days=7)).date()
+                        # 1. Lógica del Solicitante (Plana, fuera del resto del código)
+                        conn = get_connection()
+                        c = conn.cursor()
+                        
+                        c.execute("SELECT id FROM directorio_solicitantes WHERE nombre = %s", (quien_manual.strip(),))
+                        resultado = c.fetchone()
 
-                    query_insert_pedido_manual = """
-                    INSERT INTO pedidos 
-                    (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
-                    RETURNING id
-                    """
-                    
-                    c.execute(query_insert_pedido_manual, (
-                        str(numero_oficial), tf_manual, obra_manual, ceco_manual, quien_manual, fuente_guardado, 
-                        datetime.now(), fecha_limite_final, float(neto_total_carrito), float(peso_total_carrito), 
-                        0.0, 0.0, 'Pendiente', 'En Proceso'
-                    ))
-                    
-                    pid = c.fetchone()[0]
+                        if resultado:
+                            c.execute("UPDATE directorio_solicitantes SET correo = %s WHERE nombre = %s", 
+                                      (correo_manual.strip(), quien_manual.strip()))
+                        else:
+                            c.execute("INSERT INTO directorio_solicitantes (nombre, correo) VALUES (%s, %s)", 
+                                      (quien_manual.strip(), correo_manual.strip()))
 
-                    query_insert_item_manual = """
-                    INSERT INTO items_pedido 
-                    (pedido_id, item_numero, descripcion, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio, detalles) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """
+                        # 2. Ahora que el solicitante está listo, guardamos el pedido (SIEMPRE)
+                        numero_oficial = obtener_siguiente_correlativo_obra(obra_manual, tf_manual)
+                        
+                        fuente_guardado = "Generado Manualmente Taller"
+                        if aislacion_manual: fuente_guardado += " (Aislación)"
+                        if forro_metalico_manual: fuente_guardado += " (Forro Metálico)"
+                        
+                        try:
+                            from pandas.tseries.offsets import BusinessDay
+                            flim = pd.Timestamp(datetime.now()) + BusinessDay(5)
+                            fecha_limite_final = flim.date()
+                        except:
+                            from datetime import timedelta
+                            fecha_limite_final = (datetime.now() + timedelta(days=7)).date()
 
-                    for r in st.session_state.carrito_admin:
-                        detalles_manuales = str(r.get('Detalles/Medidas', r.get('detalles', ''))).strip()
-                        if detalles_manuales in ['None', 'nan', '']: detalles_manuales = ""
-
-                        c.execute(query_insert_item_manual, (
-                            pid, str(r['item_num']), str(r['Descripción']), int(r['Cantidad']), 
-                            float(r['Kg']), float(r['Espesor']), str(r['material']), str(r['unidad_cobro']), 
-                            float(r['precio_unitario']), float(r['total_linea']), str(r['origen_precio']), detalles_manuales
+                        query_insert_pedido_manual = """
+                        INSERT INTO pedidos 
+                        (num_pedido, tf, obra_codigo, ceco, quien_envia, fuente, fecha_recepcion, fecha_limite, total_neto_estimado, kg_estimados, kg_reales, m2_totales, estado, estado_plazo) 
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+                        """
+                        
+                        c.execute(query_insert_pedido_manual, (
+                            str(numero_oficial), tf_manual, obra_manual, ceco_manual, quien_manual, fuente_guardado, 
+                            datetime.now(), fecha_limite_final, float(neto_total_carrito), float(peso_total_carrito), 
+                            0.0, 0.0, 'Pendiente', 'En Proceso'
                         ))
+                        
+                        pid = c.lastrowid # ID del pedido creado
 
-                    conn.commit()
-                    conn.close()
-                    
-                    st.session_state.carrito_admin = []
-                    st.success(f"📥 ¡Pedido manual creado como {numero_oficial} y enviado a la cola de fabricación!")
-                    st.rerun()
-        else:
-            st.info("No hay piezas en este pedido todavía.")
+                        # 3. Guardar Ítems
+                        query_insert_item_manual = """
+                        INSERT INTO items_pedido 
+                        (pedido_id, item_numero, descripcion, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio, detalles) 
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """
+
+                        for r in st.session_state.carrito_admin:
+                            detalles_manuales = str(r.get('Detalles/Medidas', r.get('detalles', ''))).strip()
+                            if detalles_manuales in ['None', 'nan', '']: detalles_manuales = ""
+
+                            c.execute(query_insert_item_manual, (
+                                pid, str(r['item_num']), str(r['Descripción']), detalles_manuales, int(r['Cantidad']), 
+                                float(r['Kg']), float(r['Espesor']), str(r['material']), str(r['unidad_cobro']), 
+                                float(r['precio_unitario']), float(r['total_linea']), str(r['origen_precio'])
+                            ))
+
+                        conn.commit()
+                        conn.close()
+                        
+                        st.session_state.carrito_admin = []
+                        st.success(f"📥 ¡Pedido manual creado como {numero_oficial}!")
+                        st.rerun()
+                        
+                    except Exception as e:
+                        st.error(f"❌ Error al guardar: {e}")
 
 # ==========================================================
 # --- PESTAÑA 2: GESTIÓN DE PEDIDOS Y URGENCIAS ---
