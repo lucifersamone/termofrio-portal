@@ -15,6 +15,134 @@ import matplotlib.patches as patches
 import psycopg2
 import re
 
+# ==========================================================
+# --- CONFIGURACIÓN DE RUTAS GLOBALES (AL INICIO) ---
+# ==========================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(BASE_DIR)
+DIR_RECURSOS = os.path.join(ROOT_DIR, 'firma_timbre') 
+
+FIRMA_PATH = os.path.join(DIR_RECURSOS, 'firma.png')
+TIMBRE_PATH = os.path.join(DIR_RECURSOS, 'timbre.png')
+LOGO_PATH = os.path.join(DIR_RECURSOS, 'termofrio.ico')  # Tu archivo de ícono
+ISO_PATH = os.path.join(DIR_RECURSOS, 'tfiso.JPG')       # Sensible a mayúsculas en Linux
+
+CARPETA_EXCELS = os.path.join(ROOT_DIR, 'excels_guardados') 
+os.makedirs(CARPETA_EXCELS, exist_ok=True)
+
+CONTRASEÑA_EXCEL = "termofrio" 
+PASS_ADMIN_GENERAL = "adminprecios"
+
+# ==========================================================
+# --- FUNCIONES DE GENERACIÓN DE DOCUMENTOS PDF ---
+# ==========================================================
+def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_est, observaciones="", men="", es_final=False):
+    """Generador de PDF con conversión dinámica de .ico a .png e inyección de firmas controladas."""
+    try:
+        from PIL import Image
+        clean_id = str(pedido_num).replace("/", "-").replace("\\", "-").strip()
+        temp_dir = tempfile.gettempdir()
+        ruta_pdf = os.path.join(temp_dir, f"Comprobante_{clean_id}.pdf")
+
+        pdf = FPDF(orientation='L', unit='mm', format='A4')
+        pdf.add_page()
+        
+        # 🔄 MAGIA: Convertir termofrio.ico a PNG temporal para que FPDF lo acepte
+        logo_final_path = LOGO_PATH
+        if LOGO_PATH.lower().endswith('.ico') and os.path.exists(LOGO_PATH):
+            try:
+                img_ico = Image.open(LOGO_PATH)
+                temp_png_logo = os.path.join(temp_dir, "termofrio_logo_temp.png")
+                img_ico.save(temp_png_logo, format="PNG")
+                logo_final_path = temp_png_logo
+            except Exception as e:
+                print(f"No se pudo transformar el archivo .ico: {e}")
+
+        # --- 1. INSERTAR LOGOS (Siempre aparecen arriba si existen) ---
+        try:
+            if os.path.exists(logo_final_path): pdf.image(logo_final_path, x=10, y=8, w=45)
+            if os.path.exists(ISO_PATH): pdf.image(ISO_PATH, x=260, y=8, w=20)
+        except Exception as e:
+            print(f"Advertencia al cargar logos en coordenadas: {e}")
+
+        # Encabezado Oficial
+        pdf.set_font("Arial", "B", 14)
+        pdf.cell(0, 10, limpiar_texto("ORDEN DE FABRICACIÓN Y DESPACHO - TERMOFRIO"), ln=True, align="C")
+        pdf.set_font("Arial", "", 10)
+        pdf.cell(0, 8, limpiar_texto(f"Pedido: {pedido_num} | Obra: {obra} | TF: {tf} | CECO: {ceco}"), ln=True, align="C")
+        pdf.cell(0, 8, limpiar_texto(f"Solicitante: {solicitante}"), ln=True, align="C")
+        pdf.ln(5)
+
+        # Tabla de Piezas
+        pdf.set_font("Arial", "B", 9)
+        pdf.cell(15, 6, "Item", border=1, align="C")
+        pdf.cell(65, 6, "Descripcion", border=1)
+        pdf.cell(140, 6, "Medidas y Especificaciones", border=1)
+        pdf.cell(15, 6, "Cant.", border=1, align="C")
+        pdf.cell(20, 6, "Esp(mm)", border=1, align="C")
+        pdf.cell(20, 6, "Kg", border=1, align="C", ln=True)
+
+        pdf.set_font("Arial", "", 9)
+        for _, row in items_df.iterrows():
+            try: kg_str = f"{float(row.get('peso_total', 0)):.2f}"
+            except: kg_str = str(row.get('peso_total', '0'))
+            try: esp_str = f"{float(row.get('espesor', 0)):.1f}"
+            except: esp_str = str(row.get('espesor', '0'))
+
+            itm = str(row.get('item_numero', row.get('item_num', '')))
+            dsc = str(row.get('descripcion', row.get('Descripción', '')))
+            
+            val_det = row.get('detalles', row.get('Detalles/Medidas', ''))
+            if val_det is None or pd.isna(val_det) or str(val_det).lower() in ['none', 'nan']: det = ""
+            else: det = str(val_det).strip()
+            
+            cnt = str(row.get('cantidad', row.get('Cantidad', '')))
+
+            pdf.cell(15, 6, limpiar_texto(itm), border=1, align="C")
+            pdf.cell(65, 6, limpiar_texto(dsc)[:35], border=1) 
+            pdf.cell(140, 6, limpiar_texto(det)[:85], border=1)
+            pdf.cell(15, 6, limpiar_texto(cnt), border=1, align="C")
+            pdf.cell(20, 6, limpiar_texto(esp_str), border=1, align="C")
+            pdf.cell(20, 6, limpiar_texto(kg_str), border=1, align="C", ln=True)
+
+        if observaciones and str(observaciones).strip() and str(observaciones) != "nan":
+            pdf.ln(5)
+            pdf.set_font("Arial", "I", 9)
+            pdf.multi_cell(0, 6, limpiar_texto(f"Comentarios / Observaciones: {observaciones}"), border=1)
+
+        # --- 2. FIRMAS Y TIMBRES (Solo aparecen si es_final es True - Paso 3) ---
+        if es_final:
+            pdf.ln(15)
+            y_actual = pdf.get_y()
+            try:
+                if os.path.exists(TIMBRE_PATH): pdf.image(TIMBRE_PATH, x=40, y=y_actual, w=35)
+                if os.path.exists(FIRMA_PATH): pdf.image(FIRMA_PATH, x=210, y=y_actual, w=45)
+            except Exception as e:
+                print(f"Advertencia al cargar firmas: {e}")
+
+        pdf.output(ruta_pdf)
+        return ruta_pdf
+    except Exception as e:
+        print(f"Error generando PDF Cliente nativo interno: {e}")
+        return None
+
+def generar_pdf_firmado(ticket_id, kg_reales=0):
+    """Llama al generador activando explícitamente el timbre y la firma al final."""
+    conn = get_connection()
+    try:
+        ped = pd.read_sql(f"SELECT * FROM pedidos WHERE num_pedido = '{ticket_id}'", conn)
+        if ped.empty: return None
+        items = pd.read_sql(f"SELECT * FROM items_pedido WHERE pedido_id = {ped.iloc[0]['id']}", conn)
+        return generar_pdf_cliente(
+            pedido_num=ticket_id, tf=ped.iloc[0]['tf'], obra=ped.iloc[0]['obra_codigo'],
+            ceco=ped.iloc[0]['ceco'], solicitante=ped.iloc[0]['quien_envia'], items_df=items,
+            kg_est=ped.iloc[0]['kg_estimados'], observaciones=ped.iloc[0]['observaciones'],
+            men=ped.iloc[0]['men'], 
+            es_final=True # <-- Activa firmas y timbres
+        )
+    finally:
+        conn.close()
+
 # --- ADAPTADOR INVISIBLE PARA SUPABASE (UNIFICADO) ---
 class SQLiteToPostgresCursor:
     def __init__(self, pg_cursor):
@@ -213,24 +341,6 @@ if st.session_state.get('rol') == 'cliente':
     st.error("🔒 Acceso denegado. Este portal es de uso exclusivo para administración de taller.")
     st.stop()
 
-# ==========================================================
-# --- RUTAS Y CARPETAS GENERALES (Configuración Inicial) ---
-# ==========================================================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.dirname(BASE_DIR)
-DIR_RECURSOS = os.path.join(ROOT_DIR, 'firma_timbre') 
-
-# Aseguramos que las variables apunten exactamente a los nombres reales de tus archivos
-FIRMA_PATH = os.path.join(DIR_RECURSOS, 'firma.png')
-TIMBRE_PATH = os.path.join(DIR_RECURSOS, 'timbre.png')
-LOGO_PATH = os.path.join(DIR_RECURSOS, 'termofrio.ico')  # Modificado a .ico según tu subida
-ISO_PATH = os.path.join(DIR_RECURSOS, 'tfiso.JPG')       # Modificado a .JPG exacto
-
-CARPETA_EXCELS = os.path.join(ROOT_DIR, 'excels_guardados') 
-os.makedirs(CARPETA_EXCELS, exist_ok=True)
-
-CONTRASEÑA_EXCEL = "termofrio" 
-PASS_ADMIN_GENERAL = "adminprecios"
 
 # --- LISTAS Y MAPEOS ---
 LISTA_DESCRIPCIONES = [
