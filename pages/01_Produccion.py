@@ -17,6 +17,42 @@ import re
 from PIL import Image
 
 # ==========================================================
+# --- FUNCIÓN DE LIMPIEZA DE TEXTO (AGREGAR AQUÍ) ---
+# ==========================================================
+def limpiar_texto(text):
+    if not isinstance(text, str): 
+        text = str(text)
+    mapping = {"–": "-", "—": "-", "…": "...", "“": '"', "”": '"', "‘": "'", "’": "'"}
+    for char, replacement in mapping.items(): 
+        text = text.replace(char, replacement)
+    return text.encode("latin-1", "replace").decode("latin-1")
+
+# ==========================================================
+# --- ESTERILIZADOR DE IMÁGENES PARA FPDF ---
+# ==========================================================
+def _preparar_imagen_fpdf(ruta_img):
+    """Quita transparencias a los PNG y convierte a JPG estándar para que FPDF no colapse."""
+    if not ruta_img or not os.path.exists(ruta_img): return None
+    try:
+        img = Image.open(ruta_img)
+        if img.mode in ('RGBA', 'LA', 'P'):
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'RGBA':
+                background.paste(img, mask=img.split()[3])
+            else:
+                background.paste(img)
+            img = background
+        else:
+            img = img.convert('RGB')
+        
+        safe_path = os.path.join(tempfile.gettempdir(), f"safe_fpdf_{os.path.basename(ruta_img)}.jpg")
+        img.save(safe_path, 'JPEG', quality=95)
+        return safe_path
+    except Exception as e:
+        print(f"Error PIL: {e}")
+        return None
+
+# ==========================================================
 # --- CONFIGURACIÓN DE RUTAS GLOBALES ---
 # ==========================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -127,37 +163,6 @@ def get_connection():
 # ==========================================================
 # --- FUNCIONES DE TEXTO E IMÁGENES ---
 # ==========================================================
-def limpiar_texto(text):
-    if not isinstance(text, str): text = str(text)
-    mapping = {"–": "-", "—": "-", "…": "...", "“": '"', "”": '"', "‘": "'", "’": "'"}
-    for char, replacement in mapping.items(): text = text.replace(char, replacement)
-    return text.encode("latin-1", "replace").decode("latin-1")
-
-def _preparar_imagen_fpdf(ruta_img):
-    """Quita transparencias a los PNG y convierte a JPG estándar para que FPDF no colapse."""
-    if not ruta_img or not os.path.exists(ruta_img): return None
-    try:
-        img = Image.open(ruta_img)
-        if img.mode in ('RGBA', 'LA', 'P'):
-            background = Image.new('RGB', img.size, (255, 255, 255))
-            if img.mode == 'RGBA':
-                background.paste(img, mask=img.split()[3])
-            else:
-                background.paste(img)
-            img = background
-        else:
-            img = img.convert('RGB')
-        
-        safe_path = os.path.join(tempfile.gettempdir(), f"safe_fpdf_{os.path.basename(ruta_img)}.jpg")
-        img.save(safe_path, 'JPEG', quality=95)
-        return safe_path
-    except Exception as e:
-        print(f"Error PIL: {e}")
-        return None
-
-# ==========================================================
-# --- FUNCIONES DE GENERACIÓN DE DOCUMENTOS PDF ---
-# ==========================================================
 def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_est, observaciones="", men="", es_final=False):
     try:
         clean_id = str(pedido_num).replace("/", "-").replace("\\", "-").strip()
@@ -167,12 +172,17 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
         pdf = FPDF(orientation='L', unit='mm', format='A4')
         pdf.add_page()
         
-        # 🔍 Fallback de seguridad para el timbre (por si Linux lo guardó con mayúsculas)
-        timbre_ruta = TIMBRE_PATH if os.path.exists(TIMBRE_PATH) else os.path.join(DIR_RECURSOS, 'timbre.JPG')
-        
+        # 🕵️‍♂️ BUSCADOR INTELIGENTE: Encuentra el timbre aunque GitHub le cambie las mayúsculas
+        timbre_real = TIMBRE_PATH
+        if os.path.exists(DIR_RECURSOS):
+            for f in os.listdir(DIR_RECURSOS):
+                if 'timbre' in f.lower():  # Si el archivo contiene la palabra "timbre"
+                    timbre_real = os.path.join(DIR_RECURSOS, f)
+                    break
+
         logo_seguro = _preparar_imagen_fpdf(LOGO_PATH)
         iso_seguro = _preparar_imagen_fpdf(ISO_PATH)
-        timbre_seguro = _preparar_imagen_fpdf(timbre_ruta)
+        timbre_seguro = _preparar_imagen_fpdf(timbre_real)
         firma_seguro = _preparar_imagen_fpdf(FIRMA_PATH)
 
         # --- INSERTAR LOGOS ---
@@ -180,10 +190,7 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
             if logo_seguro: pdf.image(logo_seguro, x=10, y=8, w=45)
             if iso_seguro: pdf.image(iso_seguro, x=260, y=8, w=20)
         except Exception as e:
-            pdf.set_font("Arial", "I", 8)
-            pdf.set_text_color(255,0,0)
-            pdf.cell(0, 5, f"Error Logo: {e}", ln=True)
-            pdf.set_text_color(0,0,0)
+            pass
 
         # Encabezado
         pdf.set_font("Arial", "B", 14)
@@ -222,15 +229,11 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
             pdf.cell(15, 6, limpiar_texto(itm), border=1, align="C")
             pdf.cell(65, 6, limpiar_texto(dsc)[:35], border=1) 
             
-            # ✨ MAGIA: Auto-ajuste de fuente para textos muy largos en Especificaciones
-            if len(det_str) > 85:
-                pdf.set_font("Arial", "", 7.5) # Achicamos la letra
-            else:
-                pdf.set_font("Arial", "", 9)   # Letra normal
+            if len(det_str) > 85: pdf.set_font("Arial", "", 7.5)
+            else: pdf.set_font("Arial", "", 9)   
                 
-            pdf.cell(140, 6, det_str[:125], border=1) # Aumentamos el límite a 125 caracteres
-            
-            pdf.set_font("Arial", "", 9) # Restauramos la letra normal para el resto
+            pdf.cell(140, 6, det_str[:125], border=1) 
+            pdf.set_font("Arial", "", 9) 
             
             pdf.cell(15, 6, limpiar_texto(cnt), border=1, align="C")
             pdf.cell(20, 6, limpiar_texto(esp_str), border=1, align="C")
@@ -241,37 +244,30 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
             pdf.set_font("Arial", "I", 9)
             pdf.multi_cell(0, 6, limpiar_texto(f"Comentarios / Observaciones: {observaciones}"), border=1)
 
-        # --- FIRMAS Y TIMBRES ---
+        # --- FIRMAS Y TIMBRES (SIMETRÍA PERFECTA) ---
         if es_final:
             pdf.ln(15)
             y_actual = pdf.get_y()
             
-            # 1. Timbre (Izquierda)
+            # 🟢 ZONA IZQUIERDA: Timbre de Calidad (Posicionado simétricamente a la izquierda)
             try:
-                if timbre_seguro: pdf.image(timbre_seguro, x=60, y=y_actual, w=35)
-            except Exception as e:
-                pdf.set_xy(60, y_actual)
-                pdf.set_text_color(255,0,0)
-                pdf.cell(35, 10, f"Error Timbre: {e}")
-                pdf.set_text_color(0,0,0)
+                if timbre_seguro: pdf.image(timbre_seguro, x=67, y=y_actual - 3, w=35)
+            except Exception:
+                pass
                 
-            # 2. Firma (Derecha)
+            # 🔵 ZONA DERECHA: Firma del Jefe (Posicionado simétricamente a la derecha)
             try:
-                # Restamos 5 a "y" para que la firma flote un poquito y se vea más natural sobre la línea
-                if firma_seguro: pdf.image(firma_seguro, x=195, y=y_actual - 5, w=45) 
-            except Exception as e:
-                pdf.set_xy(195, y_actual)
-                pdf.set_text_color(255,0,0)
-                pdf.cell(45, 10, f"Error Firma: {e}")
-                pdf.set_text_color(0,0,0)
+                if firma_seguro: pdf.image(firma_seguro, x=190, y=y_actual - 12, w=45) 
+            except Exception:
+                pass
 
-            # 3. Línea y Texto decorativo bajo la firma
-            pdf.set_xy(185, y_actual + 30)
-            pdf.line(185, y_actual + 30, 250, y_actual + 30) # Dibuja una línea recta para firmar
+            # Línea de firma y cargo milimétricamente centrados bajo la firma
+            pdf.set_xy(177, y_actual + 28)
+            pdf.line(177, y_actual + 28, 247, y_actual + 28) # Ancho de 70
             
-            pdf.set_xy(185, y_actual + 32)
+            pdf.set_xy(177, y_actual + 30)
             pdf.set_font("Arial", "B", 10)
-            pdf.cell(65, 5, "Firma Jefe Fabricacion Termofrio", align="C")
+            pdf.cell(70, 5, "Firma Jefe Fabricacion Termofrio", align="C")
 
         pdf.output(ruta_pdf)
         return ruta_pdf
