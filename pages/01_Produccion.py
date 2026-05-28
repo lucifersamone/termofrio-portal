@@ -346,23 +346,6 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
         print(f"Error generando PDF Cliente nativo interno: {e}")
         return None
 
-def generar_pdf_firmado(ticket_id, kg_reales=0):
-    """Llama al generador activando explícitamente el timbre y la firma."""
-    conn = get_connection()
-    try:
-        ped = pd.read_sql(f"SELECT * FROM pedidos WHERE num_pedido = '{ticket_id}'", conn)
-        if ped.empty: return None
-        items = pd.read_sql(f"SELECT * FROM items_pedido WHERE pedido_id = {ped.iloc[0]['id']}", conn)
-        return generar_pdf_cliente(
-            pedido_num=ticket_id, tf=ped.iloc[0]['tf'], obra=ped.iloc[0]['obra_codigo'],
-            ceco=ped.iloc[0]['ceco'], solicitante=ped.iloc[0]['quien_envia'], items_df=items,
-            kg_est=ped.iloc[0]['kg_estimados'], observaciones=ped.iloc[0]['observaciones'],
-            men=ped.iloc[0]['men'], 
-            es_final=True # <-- ¡ESTA ES LA MAGIA QUE ACTIVA EL TIMBRE!
-        )
-    finally:
-        conn.close()
-
 # --- SEGURIDAD ---
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.warning("⚠️ Acceso Restringido. Por favor inicie sesión en la pantalla Principal.")
