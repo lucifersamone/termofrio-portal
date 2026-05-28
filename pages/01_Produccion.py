@@ -17,7 +17,7 @@ import re
 from PIL import Image
 
 # ==========================================================
-# --- CONFIGURACIÓN DE RUTAS GLOBALES (AL INICIO) ---
+# --- CONFIGURACIÓN DE RUTAS GLOBALES ---
 # ==========================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
@@ -34,147 +34,9 @@ os.makedirs(CARPETA_EXCELS, exist_ok=True)
 CONTRASEÑA_EXCEL = "termofrio" 
 PASS_ADMIN_GENERAL = "adminprecios"
 
-def limpiar_texto(text):
-    if not isinstance(text, str): text = str(text)
-    mapping = {"–": "-", "—": "-", "…": "...", "“": '"', "”": '"', "‘": "'", "’": "'"}
-    for char, replacement in mapping.items(): text = text.replace(char, replacement)
-    return text.encode("latin-1", "replace").decode("latin-1")
-
-# 🔥 NUEVA FUNCIÓN: Esterilizador de Imágenes para FPDF
-def _preparar_imagen_fpdf(ruta_img):
-    """Quita transparencias a los PNG y convierte a JPG estándar para que FPDF no colapse."""
-    if not ruta_img or not os.path.exists(ruta_img): return None
-    try:
-        img = Image.open(ruta_img)
-        # Si tiene transparencia (RGBA) o paleta, le ponemos fondo blanco
-        if img.mode in ('RGBA', 'LA', 'P'):
-            background = Image.new('RGB', img.size, (255, 255, 255))
-            if img.mode == 'RGBA':
-                background.paste(img, mask=img.split()[3])
-            else:
-                background.paste(img)
-            img = background
-        else:
-            img = img.convert('RGB')
-        
-        safe_path = os.path.join(tempfile.gettempdir(), f"safe_fpdf_{os.path.basename(ruta_img)}.jpg")
-        img.save(safe_path, 'JPEG', quality=95)
-        return safe_path
-    except Exception as e:
-        print(f"Error PIL: {e}")
-        return None
-
 # ==========================================================
-# --- FUNCIONES DE GENERACIÓN DE DOCUMENTOS PDF ---
+# --- ADAPTADOR BASE DE DATOS SUPABASE ---
 # ==========================================================
-def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_est, observaciones="", men="", es_final=False):
-    try:
-        clean_id = str(pedido_num).replace("/", "-").replace("\\", "-").strip()
-        temp_dir = tempfile.gettempdir()
-        ruta_pdf = os.path.join(temp_dir, f"Comprobante_{clean_id}.pdf")
-
-        pdf = FPDF(orientation='L', unit='mm', format='A4')
-        pdf.add_page()
-        
-        # Sanitizamos las imágenes para asegurar que FPDF las trague
-        logo_seguro = _preparar_imagen_fpdf(LOGO_PATH)
-        iso_seguro = _preparar_imagen_fpdf(ISO_PATH)
-        timbre_seguro = _preparar_imagen_fpdf(TIMBRE_PATH)
-        firma_seguro = _preparar_imagen_fpdf(FIRMA_PATH)
-
-        # --- 1. INSERTAR LOGOS ---
-        try:
-            if logo_seguro: pdf.image(logo_seguro, x=10, y=8, w=45)
-            if iso_seguro: pdf.image(iso_seguro, x=260, y=8, w=20)
-        except Exception as e:
-            # Si falla, escribimos el error en rojo en el PDF para poder diagnosticarlo
-            pdf.set_font("Arial", "I", 8)
-            pdf.set_text_color(255,0,0)
-            pdf.cell(0, 5, f"Error Logo: {e}", ln=True)
-            pdf.set_text_color(0,0,0)
-
-        # Encabezado
-        pdf.set_font("Arial", "B", 14)
-        pdf.cell(0, 10, limpiar_texto("ORDEN DE FABRICACIÓN Y DESPACHO - TERMOFRIO"), ln=True, align="C")
-        pdf.set_font("Arial", "", 10)
-        pdf.cell(0, 8, limpiar_texto(f"Pedido: {pedido_num} | Obra: {obra} | TF: {tf} | CECO: {ceco}"), ln=True, align="C")
-        pdf.cell(0, 8, limpiar_texto(f"Solicitante: {solicitante}"), ln=True, align="C")
-        pdf.ln(5)
-
-        # Tabla
-        pdf.set_font("Arial", "B", 9)
-        pdf.cell(15, 6, "Item", border=1, align="C")
-        pdf.cell(65, 6, "Descripcion", border=1)
-        pdf.cell(140, 6, "Medidas y Especificaciones", border=1)
-        pdf.cell(15, 6, "Cant.", border=1, align="C")
-        pdf.cell(20, 6, "Esp(mm)", border=1, align="C")
-        pdf.cell(20, 6, "Kg", border=1, align="C", ln=True)
-
-        pdf.set_font("Arial", "", 9)
-        for _, row in items_df.iterrows():
-            try: kg_str = f"{float(row.get('peso_total', 0)):.2f}"
-            except: kg_str = str(row.get('peso_total', '0'))
-            try: esp_str = f"{float(row.get('espesor', 0)):.1f}"
-            except: esp_str = str(row.get('espesor', '0'))
-
-            itm = str(row.get('item_numero', row.get('item_num', '')))
-            dsc = str(row.get('descripcion', row.get('Descripción', '')))
-            
-            val_det = row.get('detalles', row.get('Detalles/Medidas', ''))
-            if val_det is None or pd.isna(val_det) or str(val_det).lower() in ['none', 'nan']: det = ""
-            else: det = str(val_det).strip()
-            
-            cnt = str(row.get('cantidad', row.get('Cantidad', '')))
-
-            pdf.cell(15, 6, limpiar_texto(itm), border=1, align="C")
-            pdf.cell(65, 6, limpiar_texto(dsc)[:35], border=1) 
-            pdf.cell(140, 6, limpiar_texto(det)[:85], border=1)
-            pdf.cell(15, 6, limpiar_texto(cnt), border=1, align="C")
-            pdf.cell(20, 6, limpiar_texto(esp_str), border=1, align="C")
-            pdf.cell(20, 6, limpiar_texto(kg_str), border=1, align="C", ln=True)
-
-        if observaciones and str(observaciones).strip() and str(observaciones) != "nan":
-            pdf.ln(5)
-            pdf.set_font("Arial", "I", 9)
-            pdf.multi_cell(0, 6, limpiar_texto(f"Comentarios / Observaciones: {observaciones}"), border=1)
-
-        # --- 2. FIRMAS Y TIMBRES ---
-        if es_final:
-            pdf.ln(15)
-            y_actual = pdf.get_y()
-            try:
-                if timbre_seguro: pdf.image(timbre_seguro, x=40, y=y_actual, w=35)
-                if firma_seguro: pdf.image(firma_seguro, x=210, y=y_actual, w=45)
-            except Exception as e:
-                # Si falla, escribe el error rojo abajo en el PDF
-                pdf.set_font("Arial", "I", 8)
-                pdf.set_text_color(255,0,0)
-                pdf.cell(0, 10, f"Error cargando firmas: {e}", ln=True)
-                pdf.set_text_color(0,0,0)
-
-        pdf.output(ruta_pdf)
-        return ruta_pdf
-    except Exception as e:
-        print(f"Error general PDF: {e}")
-        return None
-
-def generar_pdf_firmado(ticket_id, kg_reales=0):
-    conn = get_connection()
-    try:
-        ped = pd.read_sql(f"SELECT * FROM pedidos WHERE num_pedido = '{ticket_id}'", conn)
-        if ped.empty: return None
-        items = pd.read_sql(f"SELECT * FROM items_pedido WHERE pedido_id = {ped.iloc[0]['id']}", conn)
-        return generar_pdf_cliente(
-            pedido_num=ticket_id, tf=ped.iloc[0]['tf'], obra=ped.iloc[0]['obra_codigo'],
-            ceco=ped.iloc[0]['ceco'], solicitante=ped.iloc[0]['quien_envia'], items_df=items,
-            kg_est=ped.iloc[0]['kg_estimados'], observaciones=ped.iloc[0]['observaciones'],
-            men=ped.iloc[0]['men'], 
-            es_final=True
-        )
-    finally:
-        conn.close()
-
-# --- ADAPTADOR INVISIBLE PARA SUPABASE (UNIFICADO) ---
 class SQLiteToPostgresCursor:
     def __init__(self, pg_cursor):
         self.pg_cursor = pg_cursor
@@ -262,14 +124,41 @@ class SupabaseSQLAdapter:
 def get_connection(): 
     return SupabaseSQLAdapter()
 
+# ==========================================================
+# --- FUNCIONES DE TEXTO E IMÁGENES ---
+# ==========================================================
 def limpiar_texto(text):
     if not isinstance(text, str): text = str(text)
     mapping = {"–": "-", "—": "-", "…": "...", "“": '"', "”": '"', "‘": "'", "’": "'"}
     for char, replacement in mapping.items(): text = text.replace(char, replacement)
     return text.encode("latin-1", "replace").decode("latin-1")
 
+def _preparar_imagen_fpdf(ruta_img):
+    """Quita transparencias a los PNG y convierte a JPG estándar para que FPDF no colapse."""
+    if not ruta_img or not os.path.exists(ruta_img): return None
+    try:
+        img = Image.open(ruta_img)
+        if img.mode in ('RGBA', 'LA', 'P'):
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'RGBA':
+                background.paste(img, mask=img.split()[3])
+            else:
+                background.paste(img)
+            img = background
+        else:
+            img = img.convert('RGB')
+        
+        safe_path = os.path.join(tempfile.gettempdir(), f"safe_fpdf_{os.path.basename(ruta_img)}.jpg")
+        img.save(safe_path, 'JPEG', quality=95)
+        return safe_path
+    except Exception as e:
+        print(f"Error PIL: {e}")
+        return None
+
+# ==========================================================
+# --- FUNCIONES DE GENERACIÓN DE DOCUMENTOS PDF ---
+# ==========================================================
 def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_est, observaciones="", men="", es_final=False):
-    """Generador de PDF. Si es_final=True, añade firma y timbre."""
     try:
         clean_id = str(pedido_num).replace("/", "-").replace("\\", "-").strip()
         temp_dir = tempfile.gettempdir()
@@ -278,12 +167,20 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
         pdf = FPDF(orientation='L', unit='mm', format='A4')
         pdf.add_page()
         
-        # --- 1. INSERTAR LOGOS (Siempre aparecen) ---
+        logo_seguro = _preparar_imagen_fpdf(LOGO_PATH)
+        iso_seguro = _preparar_imagen_fpdf(ISO_PATH)
+        timbre_seguro = _preparar_imagen_fpdf(TIMBRE_PATH)
+        firma_seguro = _preparar_imagen_fpdf(FIRMA_PATH)
+
+        # --- INSERTAR LOGOS ---
         try:
-            if os.path.exists(LOGO_PATH): pdf.image(LOGO_PATH, x=10, y=8, w=45)
-            if os.path.exists(ISO_PATH): pdf.image(ISO_PATH, x=260, y=8, w=20)
+            if logo_seguro: pdf.image(logo_seguro, x=10, y=8, w=45)
+            if iso_seguro: pdf.image(iso_seguro, x=260, y=8, w=20)
         except Exception as e:
-            print(f"Advertencia al cargar logos: {e}")
+            pdf.set_font("Arial", "I", 8)
+            pdf.set_text_color(255,0,0)
+            pdf.cell(0, 5, f"Error Logo: {e}", ln=True)
+            pdf.set_text_color(0,0,0)
 
         # Encabezado
         pdf.set_font("Arial", "B", 14)
@@ -330,21 +227,40 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
             pdf.set_font("Arial", "I", 9)
             pdf.multi_cell(0, 6, limpiar_texto(f"Comentarios / Observaciones: {observaciones}"), border=1)
 
-        # --- 2. FIRMAS Y TIMBRES (Solo aparecen en el PASO 3) ---
+        # --- FIRMAS Y TIMBRES ---
         if es_final:
             pdf.ln(15)
             y_actual = pdf.get_y()
             try:
-                if os.path.exists(TIMBRE_PATH): pdf.image(TIMBRE_PATH, x=40, y=y_actual, w=35)
-                if os.path.exists(FIRMA_PATH): pdf.image(FIRMA_PATH, x=210, y=y_actual, w=45)
+                if timbre_seguro: pdf.image(timbre_seguro, x=40, y=y_actual, w=35)
+                if firma_seguro: pdf.image(firma_seguro, x=210, y=y_actual, w=45)
             except Exception as e:
-                print(f"Advertencia al cargar firmas: {e}")
+                pdf.set_font("Arial", "I", 8)
+                pdf.set_text_color(255,0,0)
+                pdf.cell(0, 10, f"Error cargando firmas: {e}", ln=True)
+                pdf.set_text_color(0,0,0)
 
         pdf.output(ruta_pdf)
         return ruta_pdf
     except Exception as e:
-        print(f"Error generando PDF Cliente nativo interno: {e}")
+        print(f"Error general PDF: {e}")
         return None
+
+def generar_pdf_firmado(ticket_id, kg_reales=0):
+    conn = get_connection()
+    try:
+        ped = pd.read_sql(f"SELECT * FROM pedidos WHERE num_pedido = '{ticket_id}'", conn)
+        if ped.empty: return None
+        items = pd.read_sql(f"SELECT * FROM items_pedido WHERE pedido_id = {ped.iloc[0]['id']}", conn)
+        return generar_pdf_cliente(
+            pedido_num=ticket_id, tf=ped.iloc[0]['tf'], obra=ped.iloc[0]['obra_codigo'],
+            ceco=ped.iloc[0]['ceco'], solicitante=ped.iloc[0]['quien_envia'], items_df=items,
+            kg_est=ped.iloc[0]['kg_estimados'], observaciones=ped.iloc[0]['observaciones'],
+            men=ped.iloc[0]['men'], 
+            es_final=True
+        )
+    finally:
+        conn.close()
 
 # --- SEGURIDAD ---
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
