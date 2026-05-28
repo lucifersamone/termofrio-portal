@@ -655,63 +655,6 @@ def procesar_pedido(archivo, df_precios, material_default):
     df_result = pd.DataFrame(items)
     return enc, df_result
 
-def generar_pdf_manual(pedido_num, tf, obra, ceco, solicitante, items_df, kg_reales, fuente="", observaciones="", tipo="despacho", men=""):
-    clean_id = str(pedido_num).replace("/", "-").replace("\\", "-").strip()
-    temp_dir = tempfile.gettempdir()
-    prefijo = "Orden_Trabajo" if tipo == "interna" else "Pedido_Despacho"
-    ruta_pdf = os.path.join(temp_dir, f"{prefijo}_{clean_id}.pdf")
-
-    pdf = FPDF(orientation='L', unit='mm', format='A4')
-    pdf.add_page()
-    
-    pdf.set_font("Arial", "B", 16)
-    titulo = "ORDEN DE TRABAJO INTERNA" if tipo == "interna" else "ORDEN DE FABRICACION Y DESPACHO"
-    pdf.cell(0, 10, limpiar_texto(f"{titulo} - TERMOFRIO"), ln=True, align="C")
-    
-    pdf.set_font("Arial", "", 10)
-    pdf.cell(0, 8, limpiar_texto(f"Pedido: {pedido_num} | Obra: {obra} | TF: {tf}"), ln=True)
-    pdf.ln(5)
-    
-    pdf.set_font("Arial", "B", 9)
-    pdf.cell(15, 8, "Item", border=1, align="C")
-    pdf.cell(80, 8, "Descripcion", border=1)
-    pdf.cell(100, 8, "Medidas/Detalles", border=1)
-    pdf.cell(20, 8, "Cant.", border=1, align="C")
-    pdf.cell(20, 8, "Kg", border=1, align="C", ln=True)
-    
-    pdf.set_font("Arial", "", 9)
-    for _, fila in items_df.iterrows():
-        pdf.cell(15, 6, limpiar_texto(str(fila.get('item_numero', ''))), border=1, align="C")
-        pdf.cell(80, 6, limpiar_texto(str(fila.get('descripcion', '')))[:45], border=1)
-        pdf.cell(100, 6, limpiar_texto(str(fila.get('detalles', '')))[:60], border=1)
-        pdf.cell(20, 6, str(fila.get('cantidad', '')), border=1, align="C")
-        peso = fila.get('peso_total', 0)
-        pdf.cell(20, 6, f"{float(peso) if peso else 0:.2f}", border=1, align="C", ln=True)
-        
-    pdf.output(ruta_pdf)
-    return ruta_pdf
-
-def generar_pdf_firmado(ticket_id, kg_reales=0):
-    conn = get_connection()
-    try:
-        ped = pd.read_sql(f"SELECT * FROM pedidos WHERE num_pedido = '{ticket_id}'", conn)
-        if ped.empty: return None
-        items = pd.read_sql(f"SELECT * FROM items_pedido WHERE pedido_id = {ped.iloc[0]['id']}", conn)
-        return generar_pdf_manual(
-            pedido_num=ticket_id,
-            tf=ped.iloc[0]['tf'],
-            obra=ped.iloc[0]['obra_codigo'],
-            ceco=ped.iloc[0]['ceco'],
-            solicitante=ped.iloc[0]['quien_envia'],
-            items_df=items,
-            kg_reales=kg_reales,
-            observaciones=ped.iloc[0]['observaciones'],
-            tipo="despacho",
-            men=ped.iloc[0]['men']
-        )
-    finally:
-        conn.close()
-
 # --- INTERFAZ PRINCIPAL ---
 st.title("📦 Producción - Termofrio SPA")
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["📥 Ingreso", "📋 Gestión & Cierre", "⚙️ Configuración", "📊 Informes EDP", "📈 Dashboard"])
