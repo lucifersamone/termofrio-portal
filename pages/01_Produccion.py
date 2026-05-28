@@ -172,11 +172,11 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
         pdf = FPDF(orientation='L', unit='mm', format='A4')
         pdf.add_page()
         
-        # 🕵️‍♂️ BUSCADOR INTELIGENTE: Encuentra el timbre aunque GitHub le cambie las mayúsculas
+        # 🕵️‍♂️ Buscador inteligente de Timbre
         timbre_real = TIMBRE_PATH
         if os.path.exists(DIR_RECURSOS):
             for f in os.listdir(DIR_RECURSOS):
-                if 'timbre' in f.lower():  # Si el archivo contiene la palabra "timbre"
+                if 'timbre' in f.lower():
                     timbre_real = os.path.join(DIR_RECURSOS, f)
                     break
 
@@ -189,7 +189,7 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
         try:
             if logo_seguro: pdf.image(logo_seguro, x=10, y=8, w=45)
             if iso_seguro: pdf.image(iso_seguro, x=260, y=8, w=20)
-        except Exception as e:
+        except Exception:
             pass
 
         # Encabezado
@@ -200,7 +200,7 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
         pdf.cell(0, 8, limpiar_texto(f"Solicitante: {solicitante}"), ln=True, align="C")
         pdf.ln(5)
 
-        # Tabla
+        # Tabla de Contenido
         pdf.set_font("Arial", "B", 9)
         pdf.cell(15, 6, "Item", border=1, align="C")
         pdf.cell(65, 6, "Descripcion", border=1)
@@ -244,30 +244,59 @@ def generar_pdf_cliente(pedido_num, tf, obra, ceco, solicitante, items_df, kg_es
             pdf.set_font("Arial", "I", 9)
             pdf.multi_cell(0, 6, limpiar_texto(f"Comentarios / Observaciones: {observaciones}"), border=1)
 
-        # --- FIRMAS Y TIMBRES (SIMETRÍA PERFECTA) ---
+        # ==========================================================
+        # --- MATRIZ ESTRUCTURADA: CONTROL DE PRODUCCIÓN EN TALLER ---
+        # ==========================================================
         if es_final:
-            pdf.ln(15)
+            pdf.ln(12)
             y_actual = pdf.get_y()
             
-            # 🟢 ZONA IZQUIERDA: Timbre de Calidad (Posicionado simétricamente a la izquierda)
+            # Control de salto de página de seguridad
+            if y_actual > 145:
+                pdf.add_page()
+                y_actual = 20
+            
+            # 1. Barra de Título Superior (Alineada al ancho total de la tabla: 275mm)
+            pdf.set_xy(10, y_actual)
+            pdf.set_font("Arial", "B", 10)
+            # Dibujamos fondo gris claro sutil simulando tu captura
+            pdf.set_fill_color(240, 240, 240)
+            pdf.cell(275, 7, limpiar_texto("CONTROL DE PRODUCCIÓN EN TALLER"), border=1, ln=True, align="C", fill=True)
+            
+            # 2. Dibujar Marcos de los dos Casilleros de Control (Alto: 40mm cada uno)
+            alto_cuadro = 40
+            pdf.rect(10, y_actual + 7, 137.5, alto_cuadro)     # Casillero Izquierdo (Firma)
+            pdf.rect(147.5, y_actual + 7, 137.5, alto_cuadro)  # Casillero Derecho (Timbre)
+            
+            # --- CASILLERO IZQUIERDO: FIRMA JEFE DE FABRICACIÓN ---
+            pdf.set_xy(10, y_actual + 9)
+            pdf.set_font("Arial", "B", 9)
+            pdf.cell(137.5, 5, limpiar_texto("Firma Jefe Fabricación Termofrio:"), align="C", ln=True)
+            
+            # Inyección de Firma (Flotando centrada en su cuadro)
             try:
-                if timbre_seguro: pdf.image(timbre_seguro, x=67, y=y_actual - 3, w=35)
+                if firma_seguro:
+                    pdf.image(firma_seguro, x=56, y=y_actual + 13, w=45) 
             except Exception:
                 pass
                 
-            # 🔵 ZONA DERECHA: Firma del Jefe (Posicionado simétricamente a la derecha)
+            # Línea de firma formal al fondo del cuadro izquierdo
+            pdf.line(30, y_actual + 41, 127, y_actual + 41)
+            
+            # --- CASILLERO DERECHO: TIMBRE REVISIÓN / CALIDAD ---
+            pdf.set_xy(147.5, y_actual + 9)
+            pdf.set_font("Arial", "B", 9)
+            pdf.cell(137.5, 5, limpiar_texto("Revisado por (Control de Calidad):"), align="C", ln=True)
+            
+            # Inyección del Timbre (Centrado en su cuadro de revisión)
             try:
-                if firma_seguro: pdf.image(firma_seguro, x=190, y=y_actual - 12, w=45) 
+                if timbre_seguro:
+                    pdf.image(timbre_seguro, x=201, y=y_actual + 13, w=30)
             except Exception:
                 pass
-
-            # Línea de firma y cargo milimétricamente centrados bajo la firma
-            pdf.set_xy(177, y_actual + 28)
-            pdf.line(177, y_actual + 28, 247, y_actual + 28) # Ancho de 70
-            
-            pdf.set_xy(177, y_actual + 30)
-            pdf.set_font("Arial", "B", 10)
-            pdf.cell(70, 5, "Firma Jefe Fabricacion Termofrio", align="C")
+                
+            # Línea de revisión formal al fondo del cuadro derecho
+            pdf.line(167, y_actual + 41, 265, y_actual + 41)
 
         pdf.output(ruta_pdf)
         return ruta_pdf
