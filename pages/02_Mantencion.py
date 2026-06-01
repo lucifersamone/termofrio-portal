@@ -41,174 +41,116 @@ MESES_NOMBRES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio",
 
 # --- PAUTAS TÉCNICAS PARA MANTENEDORES EXTERNOS ---
 CHECKS_EXTERNOS_MAQUINAS = {
-    "Plasma": [
-        "Revisión de Tableros eléctricos", 
-        "Revisión de compresor", 
-        "Revisión de torcha",
-        "Revisión Extractor de Humo",
-        "Revisión de Mesa de corte",
-        "Revisión de rieles"
-    ],
-    "Cilindradora": [
-        "Revisión de partes mecánicas",
-        "Engrase de Rodamientos y partes mecánicas", 
-        "Alineación y Calibración de Rodillos",
-        "Limpieza General"
-    ],
-    "Plegadora": [
-        "Revisión de partes mecánicas",
-        "Revisión de contrapeso",
-        "Limpieza general"
-    ],
-    "Coiline": [
-        "Revisión de Sistema hidráulico",
-        "Ajuste y Nivelación de Rodillos y carril",
-        "Revisión de estructuras de bobinas", 
-        "Revisión tablero general y de máquina",
-        "Limpieza general"
-    ],
-    "Rodonadora Electrica": [
-        "Revisión Eléctrica y Cuadro de Mando", 
-        "Engrase y Lubricación General", 
-        "Ajuste de Piezas Móviles y Correas", 
-        "Prueba de Funcionamiento en Vacío",
-        "Limpieza general"
-    ],
-    "Pestañera": [
-        "Revisión Eléctrica", 
-        "Engrase y Lubricación General", 
-        "Ajuste de Piezas Móviles y Correas", 
-        "Prueba de Funcionamiento en Vacío",
-        "Limpieza General"
-    ],
-    "Rodonadora Manual": [
-        "Revisión de Partes mecánicas",
-        "Engrase y Lubricación General", 
-        "Ajuste de Piezas Móviles", 
-        "Prueba de Funcionamiento en Vacío",
-        "Limpieza General"
-    ],
-    "General": [
-        "Revisión General de Equipo",
-        "Limpieza General"
-    ]
+    "Plasma": ["Revisión de Tableros eléctricos", "Revisión de compresor", "Revisión de torcha", "Revisión Extractor de Humo", "Revisión de Mesa de corte", "Revisión de rieles"],
+    "Cilindradora": ["Revisión de partes mecánicas", "Engrase de Rodamientos y partes mecánicas", "Alineación y Calibración de Rodillos", "Limpieza General"],
+    "Plegadora": ["Revisión de partes mecánicas", "Revisión de contrapeso", "Limpieza general"],
+    "Coiline": ["Revisión de Sistema hidráulico", "Ajuste y Nivelación de Rodillos y carril", "Revisión de estructuras de bobinas", "Revisión tablero general y de máquina", "Limpieza general"],
+    "Rodonadora Electrica": ["Revisión Eléctrica y Cuadro de Mando", "Engrase y Lubricación General", "Ajuste de Piezas Móviles y Correas", "Prueba de Funcionamiento en Vacío", "Limpieza general"],
+    "Pestañera": ["Revisión Eléctrica", "Engrase y Lubricación General", "Ajuste de Piezas Móviles y Correas", "Prueba de Funcionamiento en Vacío", "Limpieza General"],
+    "Rodonadora Manual": ["Revisión de Partes mecánicas", "Engrase y Lubricación General", "Ajuste de Piezas Móviles", "Prueba de Funcionamiento en Vacío", "Limpieza General"],
+    "General": ["Revisión General de Equipo", "Limpieza General"]
 }
 
-# --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.3 - COMPLETO Y UNIFICADO) ---
+# --- ADAPTADOR INVISIBLE PARA SUPABASE ---
 class SQLiteToPostgresCursor:
     def __init__(self, pg_cursor):
         self.pg_cursor = pg_cursor
+        self._lastrowid = None
         
+    @property
+    def lastrowid(self):
+        return self._lastrowid
+
     def execute(self, query, vars=None):
         if vars is not None:
             query = query.replace('?', '%s')
             cleaned_vars = []
             for v in vars:
-                if hasattr(v, 'item') and callable(getattr(v, 'item')):
-                    cleaned_vars.append(v.item())
-                else:
-                    cleaned_vars.append(v)
+                if hasattr(v, 'item') and callable(getattr(v, 'item')): cleaned_vars.append(v.item())
+                else: cleaned_vars.append(v)
             vars = tuple(cleaned_vars)
             
         query = re.sub(r"(?i)\bas\s+'([^']+)'", r'AS "\1"', query)
         query = query.replace('[', '"').replace(']', '"')
-        query = re.sub(r'(?i)\bpedidos\b', 'pedidostf', query)
-        return self.pg_cursor.execute(query, vars)
+        
+        is_insert = query.strip().upper().startswith("INSERT")
+        if is_insert and "RETURNING" not in query.upper():
+            query = query.rstrip('; ') + " RETURNING id"
+            
+        res = self.pg_cursor.execute(query, vars)
+        
+        if is_insert:
+            try:
+                row = self.pg_cursor.fetchone()
+                if row: self._lastrowid = row[0]
+            except Exception: self._lastrowid = None
+        return res
         
     def executemany(self, query, vars_list=None):
-        # Soporte para inserciones masivas de ítems desde el Excel
         if vars_list is not None:
             query = query.replace('?', '%s')
             cleaned_vars_list = []
             for vars in vars_list:
                 cleaned_vars = []
                 for v in vars:
-                    if hasattr(v, 'item') and callable(getattr(v, 'item')):
-                        cleaned_vars.append(v.item())
-                    else:
-                        cleaned_vars.append(v)
+                    if hasattr(v, 'item') and callable(getattr(v, 'item')): cleaned_vars.append(v.item())
+                    else: cleaned_vars.append(v)
                 cleaned_vars_list.append(tuple(cleaned_vars))
             vars_list = cleaned_vars_list
             
         query = re.sub(r"(?i)\bas\s+'([^']+)'", r'AS "\1"', query)
         query = query.replace('[', '"').replace(']', '"')
-        query = re.sub(r'(?i)\bpedidos\b', 'pedidostf', query)
         return self.pg_cursor.executemany(query, vars_list)
         
-    def __getattr__(self, name):
-        return getattr(self.pg_cursor, name)
+    def __getattr__(self, name): return getattr(self.pg_cursor, name)
 
 class SupabaseSQLAdapter:
     def __init__(self):
-        self.conn = psycopg2.connect(
-            host=st.secrets["DB_HOST"],
-            database=st.secrets["DB_NAME"],
-            user=st.secrets["DB_USER"],
-            port=st.secrets["DB_PORT"],
-            password=st.secrets["DB_PASS"]
-        )
+        self.conn = psycopg2.connect(host=st.secrets["DB_HOST"], database=st.secrets["DB_NAME"], user=st.secrets["DB_USER"], port=st.secrets["DB_PORT"], password=st.secrets["DB_PASS"])
         self.conn.autocommit = True
         
-    def cursor(self):
-        return SQLiteToPostgresCursor(self.conn.cursor())
+    def cursor(self): return SQLiteToPostgresCursor(self.conn.cursor())
+    def commit(self): pass
+    def close(self): self.conn.close()
+    def __getattr__(self, name): return getattr(self.conn, name)
 
-    def commit(self):
-        pass
+def get_connection(): return SupabaseSQLAdapter()
 
-    def close(self):
-        self.conn.close()
-
-    def __getattr__(self, name):
-        return getattr(self.conn, name)
-
-def get_connection(): 
-    return SupabaseSQLAdapter()
-
-# --- OPTIMIZACIÓN 1: CACHÉ PARA CONFIGURACIÓN INICIAL ---
+# --- OPTIMIZACIÓN 1: CACHÉ PARA CONFIGURACIÓN INICIAL (ADAPTADO A POSTGRES) ---
 @st.cache_resource
 def setup_entorno_inicial():
     for c in [CARPETA_FOTOS, CARPETA_FIRMAS, CARPETA_INFORMES, CARPETA_EVIDENCIAS, CARPETA_QRS, CARPETA_BIBLIOTECA, CARPETA_FOTOS_EVIDENCIA]:
         if not os.path.exists(c): os.makedirs(c)
         
     conn = get_connection(); c = conn.cursor()
+    # 🔴 CORE FIX: Incorporado SERIAL PRIMARY KEY para reemplazar el rowid de SQLite
     c.execute('''CREATE TABLE IF NOT EXISTS registros_inspeccion (
+        id SERIAL PRIMARY KEY,
         fecha_hora TEXT, maquina_id TEXT, operador TEXT, checks_ok TEXT, 
-        repuesto_necesario INTEGER, comentarios TEXT, firma_path TEXT, pdf_path TEXT
+        repuesto_necesario INTEGER, comentarios TEXT, firma_path TEXT, pdf_path TEXT,
+        foto_evidencia_path TEXT
     )''')
-    try: c.execute("ALTER TABLE registros_inspeccion ADD COLUMN pdf_path TEXT")
-    except: pass
-    try: c.execute("ALTER TABLE registros_inspeccion ADD COLUMN foto_evidencia_path TEXT")
-    except: pass
     
     c.execute('''CREATE TABLE IF NOT EXISTS maquinas (
         id TEXT PRIMARY KEY, nombre TEXT, caracteristicas TEXT, frecuencia_mantencion TEXT, foto_path TEXT, modelo TEXT
     )''')
-    try: c.execute("ALTER TABLE maquinas ADD COLUMN modelo TEXT")
-    except: pass
     
+    # 🔴 CORE FIX: AUTOINCREMENT cambiado a SERIAL para PostgreSQL
     c.execute('''CREATE TABLE IF NOT EXISTS plan_externo (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, maquina_id TEXT, fecha_programada DATE, 
+        id SERIAL PRIMARY KEY, maquina_id TEXT, fecha_programada DATE, 
         proveedor TEXT, estado TEXT, evidencia_pdf_path TEXT, fecha_realizacion DATE,
         evaluacion_proveedor TEXT
     )''')
-    try: c.execute("ALTER TABLE plan_externo ADD COLUMN evaluacion_proveedor TEXT")
-    except: pass
     conn.commit(); conn.close()
     return True
 
 setup_entorno_inicial()
 
-# --- OPTIMIZACIÓN 2: CACHÉ PARA EL LOGO HTML ---
 @st.cache_data
 def get_logo_html(ruta_logo):
     if os.path.exists(ruta_logo):
-        with open(ruta_logo, "rb") as img_file:
-            b64_string = base64.b64encode(img_file.read()).decode()
-        return f"""
-            <div style="display: flex; justify-content: center; margin-bottom: 20px;">
-                <img src="data:image/jpeg;base64,{b64_string}" alt="Logo Termofrio" style="max-height: 90px; width: auto; max-width: 100%; object-fit: contain;">
-            </div>
-        """
+        with open(ruta_logo, "rb") as img_file: b64_string = base64.b64encode(img_file.read()).decode()
+        return f'<div style="display: flex; justify-content: center; margin-bottom: 20px;"><img src="data:image/jpeg;base64,{b64_string}" alt="Logo Termofrio" style="max-height: 90px; width: auto; max-width: 100%; object-fit: contain;"></div>'
     return "<h2 style='text-align: center; color: #b30000;'>TERMOFRIO SPA - MANTENIMIENTO</h2>"
 
 # --- FUNCIONES LÓGICAS ---
@@ -220,27 +162,22 @@ def get_maquinas_lista():
 
 def obtener_puntos(maquina_id):
     m = str(maquina_id).upper()
-    
     if any(x in m for x in ["CNC", "PLASMA", "COILINE"]):
         puntos = ["Limpieza General", "Tablero Eléctrico y Cables", "PC y Pantalla", "Sist. Aire / Hidráulico", "Rieles/Guías", "Consumibles/Corte"]
         if "COILINE" in m: puntos.append("Carretes y Rodamientos")
         return puntos
-        
     if any(x in m for x in ["CILINDRADORA", "GUILLOTINA", "PLEGADORA"]):
         return ["Limpieza General", "Engrase / Lubricación", "Estado de Cuchillos / Prismas / Rodillos", "Ajuste Mecánico y Manivelas"]
-        
     if any(x in m for x in ["RODONADORA", "PESTAÑERA", "PESTANERA", "TDF", "EMBALLETADORA"]):
-        if "MANUAL" in m and "RODONADORA" in m:
-            return ["Limpieza General", "Engrase / Lubricación", "Estado de Rodillos / Ejes", "Ajuste Mecánico y Manivelas"]
-        else:
-            return ["Limpieza General", "Tablero Eléctrico y Cables", "Funcionamiento Motor", "Rodamientos y Guías", "Protecciones Seguridad"]
-            
+        if "MANUAL" in m and "RODONADORA" in m: return ["Limpieza General", "Engrase / Lubricación", "Estado de Rodillos / Ejes", "Ajuste Mecánico y Manivelas"]
+        else: return ["Limpieza General", "Tablero Eléctrico y Cables", "Funcionamiento Motor", "Rodamientos y Guías", "Protecciones Seguridad"]
     return ["Limpieza General", "Tablero Eléctrico y Cables", "Funcionamiento Motor", "Rodamientos y Guías", "Protecciones Seguridad"]
 
 def obtener_estado_semana(maquina_id):
     conn = get_connection()
     try:
-        df = pd.read_sql("SELECT rowid, operador, fecha_hora, repuesto_necesario FROM registros_inspeccion WHERE maquina_id=? ORDER BY fecha_hora DESC", conn, params=(maquina_id,))
+        # 🔴 CORE FIX: Cambiado rowid por id
+        df = pd.read_sql("SELECT id, operador, fecha_hora, repuesto_necesario FROM registros_inspeccion WHERE maquina_id=%s ORDER BY fecha_hora DESC", conn, params=(maquina_id,))
         if df.empty: return None
         df['fecha_hora'] = pd.to_datetime(df['fecha_hora'])
         hoy = datetime.now()
@@ -251,7 +188,6 @@ def obtener_estado_semana(maquina_id):
     except: return None
     finally: conn.close()
 
-# --- FUNCIÓN DE GENERACIÓN DE PDF MEJORADA NATIVA ---
 def generar_pdf_checklist(maquina, operador, fecha_dt, checks_lista, estado, obs, firma_path, foto_evidencia_path=None):
     nombre_seguro = "".join([c if c.isalnum() else "_" for c in maquina])
     fecha_str_file = fecha_dt.strftime('%Y%m%d_%H%M%S')
@@ -261,17 +197,16 @@ def generar_pdf_checklist(maquina, operador, fecha_dt, checks_lista, estado, obs
         c = canvas.Canvas(ruta_pdf, pagesize=letter)
         w, h = letter
         
-        # --- PÁGINA 1: DATOS DEL CHECKLIST ---
         c.setFillColor(colors.darkblue)
         c.rect(0, h - 80, w, 80, fill=1, stroke=0)
         
         if os.path.exists(LOGO_TERMOFRIO):
             try: c.drawImage(ImageReader(LOGO_TERMOFRIO), 15, h - 75, width=150, height=70, mask='auto', preserveAspectRatio=True)
-            except Exception as e: print(f"Error cargando logo termofrio: {e}")
+            except: pass
             
         if os.path.exists(LOGO_ISO):
             try: c.drawImage(ImageReader(LOGO_ISO), w - 85, h - 75, width=70, height=70, mask='auto', preserveAspectRatio=True)
-            except Exception as e: print(f"Error cargando logo ISO: {e}")
+            except: pass
 
         c.setFillColor(colors.white)
         c.setFont("Helvetica-Bold", 16)
@@ -281,105 +216,65 @@ def generar_pdf_checklist(maquina, operador, fecha_dt, checks_lista, estado, obs
         
         c.setFillColor(colors.black)
         y_info = h - 110
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(50, y_info, f"Máquina:"); c.setFont("Helvetica", 12); c.drawString(120, y_info, maquina)
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(350, y_info, f"Fecha:"); c.setFont("Helvetica", 12); c.drawString(400, y_info, fecha_dt.strftime('%d/%m/%Y %H:%M'))
+        c.setFont("Helvetica-Bold", 12); c.drawString(50, y_info, f"Máquina:"); c.setFont("Helvetica", 12); c.drawString(120, y_info, maquina)
+        c.setFont("Helvetica-Bold", 12); c.drawString(350, y_info, f"Fecha:"); c.setFont("Helvetica", 12); c.drawString(400, y_info, fecha_dt.strftime('%d/%m/%Y %H:%M'))
         
         y_info -= 20
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(50, y_info, f"Operador/Técnico:"); c.setFont("Helvetica", 12); c.drawString(170, y_info, operador)
+        c.setFont("Helvetica-Bold", 12); c.drawString(50, y_info, f"Operador/Técnico:"); c.setFont("Helvetica", 12); c.drawString(170, y_info, operador)
         
         y_info -= 40
         c.setFont("Helvetica-Bold", 16)
         c.drawCentredString(w/2, y_info, "ESTADO DEL EQUIPO")
         y_info -= 25
         c.setFont("Helvetica-Bold", 20)
-        if estado == "CON FALLA":
-            c.setFillColor(colors.red); texto_estado = "⛔ NO OPERATIVO / CON FALLA"
-        else:
-            c.setFillColor(colors.green); texto_estado = "✅ OPERATIVO"
+        if estado == "CON FALLA": c.setFillColor(colors.red); texto_estado = "⛔ NO OPERATIVO / CON FALLA"
+        else: c.setFillColor(colors.green); texto_estado = "✅ OPERATIVO"
         c.drawCentredString(w/2, y_info, texto_estado)
-        c.setFillColor(colors.black)
-        c.setStrokeColor(colors.gray)
-        c.line(50, y_info - 20, w - 50, y_info - 20)
+        c.setFillColor(colors.black); c.setStrokeColor(colors.gray); c.line(50, y_info - 20, w - 50, y_info - 20)
         
         y = y_info - 50
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(50, y, "Detalle Verificado:")
-        y -= 25
-        c.setFont("Helvetica", 11)
+        c.setFont("Helvetica-Bold", 12); c.drawString(50, y, "Detalle Verificado:")
+        y -= 25; c.setFont("Helvetica", 11)
         
         for item in checks_lista:
-            if "No Cumple" in item or "FALLA" in item:
-                c.setFillColor(colors.red); c.drawString(60, y, "[X]")
-            else:
-                c.setFillColor(colors.green); c.drawString(60, y, "[OK]")
-            c.setFillColor(colors.black)
-            c.drawString(90, y, item)
+            if "No Cumple" in item or "FALLA" in item: c.setFillColor(colors.red); c.drawString(60, y, "[X]")
+            else: c.setFillColor(colors.green); c.drawString(60, y, "[OK]")
+            c.setFillColor(colors.black); c.drawString(90, y, item)
             y -= 20
             if y < 100: c.showPage(); y = h - 50
             
         y -= 20
-        c.setFillColor(colors.darkblue)
-        c.rect(50, y, w-100, 20, fill=1, stroke=0)
-        c.setFillColor(colors.white)
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(60, y+5, "Observaciones Registradas")
+        c.setFillColor(colors.darkblue); c.rect(50, y, w-100, 20, fill=1, stroke=0)
+        c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 12); c.drawString(60, y+5, "Observaciones Registradas")
         
         y -= 20
         c.setFillColor(colors.black); c.setFont("Helvetica", 10)
-        if obs.strip():
-            txt_obj = c.beginText(60, y); txt_obj.textLines(obs); c.drawText(txt_obj)
-        else:
-            c.drawString(60, y, "Sin observaciones adicionales.")
+        if obs.strip(): txt_obj = c.beginText(60, y); txt_obj.textLines(obs); c.drawText(txt_obj)
+        else: c.drawString(60, y, "Sin observaciones adicionales.")
             
         y_firma = 100
-        c.setStrokeColor(colors.black)
-        c.line(w/2 - 100, y_firma, w/2 + 100, y_firma)
-        c.setFont("Helvetica", 10)
-        c.drawCentredString(w/2, y_firma - 15, f"Firma: {operador}")
+        c.setStrokeColor(colors.black); c.line(w/2 - 100, y_firma, w/2 + 100, y_firma)
+        c.setFont("Helvetica", 10); c.drawCentredString(w/2, y_firma - 15, f"Firma: {operador}")
         
         if os.path.exists(firma_path):
             try: c.drawImage(ImageReader(firma_path), w/2 - 60, y_firma + 5, width=120, height=60, mask='auto')
             except: pass
 
-        # --- PÁGINA 2: EVIDENCIA FOTOGRÁFICA ---
         if foto_evidencia_path and os.path.exists(foto_evidencia_path):
             c.showPage()
-            
-            c.setFillColor(colors.darkblue)
-            c.rect(0, h - 80, w, 80, fill=1, stroke=0)
-            c.setFillColor(colors.white)
-            c.setFont("Helvetica-Bold", 16)
-            c.drawCentredString(w/2, h - 40, "ANEXO: EVIDENCIA FOTOGRAFICA")
-            c.setFont("Helvetica", 12)
-            c.drawCentredString(w/2, h - 60, f"MAQUINA: {maquina}")
-            
+            c.setFillColor(colors.darkblue); c.rect(0, h - 80, w, 80, fill=1, stroke=0)
+            c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 16); c.drawCentredString(w/2, h - 40, "ANEXO: EVIDENCIA FOTOGRAFICA")
+            c.setFont("Helvetica", 12); c.drawCentredString(w/2, h - 60, f"MAQUINA: {maquina}")
             try:
                 pil_img = Image.open(foto_evidencia_path)
                 pil_img = ImageOps.exif_transpose(pil_img) 
-                
                 img_buffer = io.BytesIO()
-                pil_img.save(img_buffer, format="PNG") 
-                img_buffer.seek(0)
-                
+                pil_img.save(img_buffer, format="PNG"); img_buffer.seek(0)
                 w_img, h_img = pil_img.size
-                target_w_max = w - 100 
-                target_h_max = h - 200 
-                
-                if h_img > w_img:
-                    target_h = h - 220 
-                    target_w = w - 200 
-                    c.drawImage(ImageReader(img_buffer), 100, 50, width=target_w, height=target_h, preserveAspectRatio=True, mask='auto')
-                else: 
-                    target_w = w - 100
-                    target_h = 400
-                    c.drawImage(ImageReader(img_buffer), 50, h - 550, width=target_w, height=target_h, preserveAspectRatio=True, mask='auto')
-                
+                if h_img > w_img: c.drawImage(ImageReader(img_buffer), 100, 50, width=w - 200, height=h - 220, preserveAspectRatio=True, mask='auto')
+                else: c.drawImage(ImageReader(img_buffer), 50, h - 550, width=w - 100, height=400, preserveAspectRatio=True, mask='auto')
             except Exception as e:
-                c.setFillColor(colors.black)
-                c.drawString(50, h - 150, f"Error al cargar la fotografía de evidencia: {e}")
+                c.setFillColor(colors.black); c.drawString(50, h - 150, f"Error al cargar foto: {e}")
                 
         c.save(); return ruta_pdf
     except Exception as e: print(e); return None
@@ -402,24 +297,21 @@ try: param_maquina = st.query_params.get("maquina", None)
 except: param_maquina = None
 
 estoy_logueado = 'logged_in' in st.session_state and st.session_state.logged_in
+modo_kiosco = True if param_maquina else (False if estoy_logueado else None)
 
-modo_kiosco = False
-if param_maquina: modo_kiosco = True
-elif estoy_logueado: modo_kiosco = False
-else:
+if modo_kiosco is None:
     st.warning("⚠️ Acceso Restringido. Inicie sesión en la pantalla Principal o escanee el QR.")
     st.stop()
 
 # ================= VISTA 1: MODO KIOSCO (CELULAR / QR) =================
 if modo_kiosco:
     st.markdown(get_logo_html(LOGO_TERMOFRIO), unsafe_allow_html=True)
-        
     st.info(f"📱 Equipo seleccionado: **{param_maquina}**")
     
     conn = get_connection()
-    foto = pd.read_sql("SELECT foto_path FROM maquinas WHERE id=?", conn, params=(param_maquina,))
-    df_estado = pd.read_sql("SELECT repuesto_necesario, fecha_hora FROM registros_inspeccion WHERE maquina_id=? ORDER BY fecha_hora DESC LIMIT 1", conn, params=(param_maquina,))
-    df_plan = pd.read_sql("SELECT fecha_programada, proveedor FROM plan_externo WHERE maquina_id=? AND estado='Programado' ORDER BY fecha_programada ASC LIMIT 1", conn, params=(param_maquina,))
+    foto = pd.read_sql("SELECT foto_path FROM maquinas WHERE id=%s", conn, params=(param_maquina,))
+    df_estado = pd.read_sql("SELECT repuesto_necesario, fecha_hora FROM registros_inspeccion WHERE maquina_id=%s ORDER BY fecha_hora DESC LIMIT 1", conn, params=(param_maquina,))
+    df_plan = pd.read_sql("SELECT fecha_programada, proveedor FROM plan_externo WHERE maquina_id=%s AND estado='Programado' ORDER BY fecha_programada ASC LIMIT 1", conn, params=(param_maquina,))
     conn.close()
     
     st.markdown("---")
@@ -428,24 +320,28 @@ if modo_kiosco:
         if not df_estado.empty:
             es_falla = df_estado.iloc[0]['repuesto_necesario'] == 1
             fecha_ult = pd.to_datetime(df_estado.iloc[0]['fecha_hora']).strftime("%d/%m/%Y")
-            if es_falla:
-                st.error(f"🔴 **ESTADO ACTUAL:** CON FALLA \n\n*(Última act: {fecha_ult})*")
-            else:
-                st.success(f"🟢 **ESTADO ACTUAL:** OPERATIVO \n\n*(Última act: {fecha_ult})*")
-        else:
-            st.warning("⚪ **ESTADO ACTUAL:** Sin registros históricos")
+            if es_falla: st.error(f"🔴 **ESTADO ACTUAL:** CON FALLA \n\n*(Última act: {fecha_ult})*")
+            else: st.success(f"🟢 **ESTADO ACTUAL:** OPERATIVO \n\n*(Última act: {fecha_ult})*")
+        else: st.warning("⚪ **ESTADO ACTUAL:** Sin registros históricos")
 
     with col_est2:
         if not df_plan.empty:
             fp = pd.to_datetime(df_plan.iloc[0]['fecha_programada'])
-            mes_str = MESES_NOMBRES[fp.month - 1]
-            st.info(f"📅 **PRÓX. PREVENTIVO EXTERNO:** \n\n**{mes_str} {fp.year}** (Prov: {df_plan.iloc[0]['proveedor']})")
-        else:
-            st.info("📅 **PRÓX. PREVENTIVO EXTERNO:** \n\nNo programada en matriz")
+            st.info(f"📅 **PRÓX. PREVENTIVO EXTERNO:** \n\n**{MESES_NOMBRES[fp.month - 1]} {fp.year}** (Prov: {df_plan.iloc[0]['proveedor']})")
+        else: st.info("📅 **PRÓX. PREVENTIVO EXTERNO:** \n\nNo programada en matriz")
     st.markdown("---")
 
-    if not foto.empty and foto.iloc[0]['foto_path'] and os.path.exists(foto.iloc[0]['foto_path']):
-        st.image(foto.iloc[0]['foto_path'], use_container_width=True)
+    # 📸 CORE FIX: BUSCADOR INTELIGENTE DE FOTOS (FALLBACK)
+    if not foto.empty and foto.iloc[0]['foto_path']:
+        ruta_foto_db = foto.iloc[0]['foto_path']
+        if os.path.exists(ruta_foto_db):
+            st.image(ruta_foto_db, use_container_width=True)
+        else:
+            # Si falla la ruta larga de la DB, busca solo el nombre en la carpeta de GitHub
+            nombre_archivo = os.path.basename(ruta_foto_db)
+            ruta_inteligente = os.path.join(CARPETA_FOTOS, nombre_archivo)
+            if os.path.exists(ruta_inteligente):
+                st.image(ruta_inteligente, use_container_width=True)
 
     tipo_usuario = st.radio("¿Qué tipo de mantenimiento realizará?", ["👷 Personal Interno (Checklist Semanal)", "🔧 Personal Externo (Mantenimiento Técnico)"])
     st.divider()
@@ -462,26 +358,19 @@ if modo_kiosco:
             
             if es_falla:
                 st.error(f"⚠️ **ESTE EQUIPO FUE DECLARADO EN FALLA ESTA SEMANA** (Reportado por {op_real})")
-                accion = st.radio("¿Qué desea hacer?", ["Registrar reparación y habilitar equipo", "Solo ver estado (No hacer nada)"])
-                if accion == "Registrar reparación y habilitar equipo":
+                if st.radio("¿Qué desea hacer?", ["Registrar reparación y habilitar equipo", "Solo ver estado (No hacer nada)"]) == "Registrar reparación y habilitar equipo":
                     with st.form("frm_reparacion"):
                         st.subheader("Registro de Reparación")
                         op = st.selectbox("Técnico / Operador que repara:", ["Seleccionar...", "Julson Epingle", "Luis Zapata", "Mauricio Villanueva", "Oscar Fabres", "Lucio Zúñiga"])
                         obs_rep = st.text_area("Describa el trabajo realizado para solucionar la falla (Obligatorio):")
-                        
-                        foto_rep_up = st.file_uploader("📸 Adjuntar Foto de la Reparación (Opcional)", type=['jpg', 'jpeg', 'png'], key="img_rep")
-                        
-                        st.write("**Firma Digital:**")
-                        canvas_rep = st_canvas(stroke_width=2, height=100, key="f_rep", background_color="#fff")
-                        if st.form_submit_button("✅ Habilitar Máquina (Operativa)"):
-                            if op == "Seleccionar..." or not obs_rep.strip() or canvas_rep.image_data is None:
-                                st.error("Llene todos los campos para levantar la falla.")
+                        foto_rep_up = st.file_uploader("📸 Adjuntar Foto de la Reparación (Opcional)", type=['jpg', 'jpeg', 'png'])
+                        st.write("**Firma Digital:**"); canvas_rep = st_canvas(stroke_width=2, height=100, key="f_rep", background_color="#fff")
+                        if st.form_submit_button("✅ Habilitar Máquina"):
+                            if op == "Seleccionar..." or not obs_rep.strip() or canvas_rep.image_data is None: st.error("Complete los datos.")
                             else:
-                                fecha_dt = datetime.now()
-                                f_str = fecha_dt.strftime("%Y-%m-%d %H:%M:%S")
+                                fecha_dt = datetime.now(); f_str = fecha_dt.strftime("%Y-%m-%d %H:%M:%S")
                                 f_path = os.path.join(CARPETA_FIRMAS, f"REP_{param_maquina}_{fecha_dt.strftime('%Y%m%d%H%M')}.png")
                                 Image.fromarray(canvas_rep.image_data.astype(np.uint8)).save(f_path)
-                                
                                 ruta_evidencia = ""
                                 if foto_rep_up:
                                     ruta_evidencia = os.path.join(CARPETA_FOTOS_EVIDENCIA, f"EVID_{param_maquina}_{fecha_dt.strftime('%Y%m%d%H%M%S')}.png")
@@ -495,54 +384,43 @@ if modo_kiosco:
                                 try:
                                     pdf_path = generar_pdf_checklist(param_maquina, op, fecha_dt, ["Reparación de falla completada: OK"], "Operativo", obs_rep, f_path, ruta_evidencia)
                                     conn = get_connection(); c=conn.cursor()
-                                    c.execute("UPDATE registros_inspeccion SET pdf_path=? WHERE rowid=?", (pdf_path, last_id))
+                                    # 🔴 CORE FIX: Update con id
+                                    c.execute("UPDATE registros_inspeccion SET pdf_path=%s WHERE id=%s", (pdf_path, last_id))
                                     conn.commit(); conn.close()
                                 except: pass
                                 
-                                st.success("¡Máquina reparada y operativa nuevamente!")
-                                st.balloons()
-                                time.sleep(2.5) 
-                                st.rerun()
+                                st.success("¡Máquina reparada!"); st.balloons(); time.sleep(2); st.rerun()
                 mostrar_formulario = False
             else:
                 st.success(f"✅ **Equipo ya inspeccionado esta semana** (Revisado el {fecha_real} por {op_real}).")
-                if not st.checkbox("¿Ocurrió una nueva falla y desea registrarla ahora?"):
-                    mostrar_formulario = False
+                if not st.checkbox("¿Ocurrió una nueva falla y desea registrarla ahora?"): mostrar_formulario = False
 
         if mostrar_formulario:
             with st.form("frm_kiosco_interno"):
                 st.subheader("📝 Checklist Visual de Inspección")
                 op = st.selectbox("Operador Responsable:", ["Seleccionar...", "Julson Epingle", "Luis Zapata", "Mauricio Villanueva", "Oscar Fabres", "Lucio Zúñiga"])
                 puntos = obtener_puntos(param_maquina)
-                
                 respuestas_checks = []
                 for p in puntos:
                     estado_p = st.radio(f"🔹 {p}", ["Cumple", "No Cumple"], index=0, horizontal=True)
-                    motivo_p = ""
-                    if estado_p == "No Cumple":
-                        motivo_p = st.text_input(f"✍️ Indique el motivo para '{p}':")
+                    motivo_p = st.text_input(f"✍️ Indique motivo para '{p}':") if estado_p == "No Cumple" else ""
                     respuestas_checks.append({"punto": p, "estado": estado_p, "motivo": motivo_p})
                 
                 st.markdown("---")
                 es_operativo = st.radio("¿El equipo se encuentra en condiciones OPERATIVAS para trabajar?", ["Sí, 100% Operativo", "No, Presenta Falla"], index=None)
-                motivo_falla_final = ""
-                if es_operativo == "No, Presenta Falla":
-                    motivo_falla_final = st.text_area("⚠️ Describa brevemente la falla principal:")
-                
-                foto_chk_up = st.file_uploader("📸 Adjuntar Foto de Evidencia (Opcional - Útil para reportar piezas rotas)", type=['jpg', 'jpeg', 'png'], key="img_chk")
+                motivo_falla_final = st.text_area("⚠️ Describa brevemente la falla principal:") if es_operativo == "No, Presenta Falla" else ""
+                foto_chk_up = st.file_uploader("📸 Adjuntar Foto de Evidencia (Opcional)", type=['jpg', 'jpeg', 'png'])
 
-                st.write("**Firma Digital del Operador:**")
-                canvas_int = st_canvas(stroke_width=2, height=100, key="f_int", background_color="#fff")
+                st.write("**Firma Digital:**"); canvas_int = st_canvas(stroke_width=2, height=100, key="f_int", background_color="#fff")
                 
                 if st.form_submit_button("💾 Guardar Inspección"):
                     errores = False
                     if op == "Seleccionar...": errores = True; st.error("Seleccione Operador.")
-                    if es_operativo is None: errores = True; st.error("Indique si el equipo está operativo o no.")
-                    if es_operativo == "No, Presenta Falla" and not motivo_falla_final.strip(): errores = True; st.error("Debe explicar la falla final.")
-                    if canvas_int.image_data is None: errores = True; st.error("Debe firmar el documento.")
+                    if es_operativo is None: errores = True; st.error("Indique si está operativo.")
+                    if es_operativo == "No, Presenta Falla" and not motivo_falla_final.strip(): errores = True; st.error("Explique la falla.")
+                    if canvas_int.image_data is None: errores = True; st.error("Firme el documento.")
                     for r in respuestas_checks:
-                        if r['estado'] == 'No Cumple' and not r['motivo'].strip():
-                            errores = True; st.error(f"Falta el motivo para '{r['punto']}'.")
+                        if r['estado'] == 'No Cumple' and not r['motivo'].strip(): errores = True; st.error(f"Falta motivo para '{r['punto']}'.")
 
                     if not errores:
                         fecha_dt = datetime.now(); f_str = fecha_dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -554,11 +432,7 @@ if modo_kiosco:
                             ruta_evidencia = os.path.join(CARPETA_FOTOS_EVIDENCIA, f"EVID_{param_maquina}_{fecha_dt.strftime('%Y%m%d%H%M%S')}.png")
                             with open(ruta_evidencia, "wb") as f: f.write(foto_chk_up.getbuffer())
                         
-                        txt_chk_lista = []
-                        for r in respuestas_checks:
-                            if r['estado'] == 'Cumple': txt_chk_lista.append(f"{r['punto']}: Cumple")
-                            else: txt_chk_lista.append(f"{r['punto']}: No Cumple ({r['motivo']})")
-                        
+                        txt_chk_lista = [f"{r['punto']}: Cumple" if r['estado'] == 'Cumple' else f"{r['punto']}: No Cumple ({r['motivo']})" for r in respuestas_checks]
                         str_db = " | ".join(txt_chk_lista)
                         es_falla_db = 1 if "No" in es_operativo else 0
                         estado_pdf = "CON FALLA" if es_falla_db == 1 else "Operativo"
@@ -568,81 +442,58 @@ if modo_kiosco:
                                   (f_str, param_maquina, op, str_db, es_falla_db, motivo_falla_final, f_path, "", ruta_evidencia))
                         conn.commit(); last_id = c.lastrowid; conn.close()
                         
-                        st.success("✅ **Inspección Guardada Exitosamente**")
-                        st.balloons()
-                        
                         try:
                             pdf_path = generar_pdf_checklist(param_maquina, op, fecha_dt, txt_chk_lista, estado_pdf, motivo_falla_final, f_path, ruta_evidencia)
                             if pdf_path:
                                 conn = get_connection(); c=conn.cursor()
-                                c.execute("UPDATE registros_inspeccion SET pdf_path=? WHERE rowid=?", (pdf_path, last_id))
+                                # 🔴 CORE FIX: Update con id
+                                c.execute("UPDATE registros_inspeccion SET pdf_path=%s WHERE id=%s", (pdf_path, last_id))
                                 conn.commit(); conn.close()
                         except: pass
-                        
-                        time.sleep(2.5) 
-                        st.rerun()
+                        st.success("Guardado!"); st.balloons(); time.sleep(2); st.rerun()
 
     # --- FLUJO 2: PERSONAL EXTERNO ---
     else:
         st.subheader("🛠️ Registro de Mantenimiento Preventivo Externo")
         conn = get_connection()
-        planes_pendientes = pd.read_sql("SELECT id, fecha_programada, proveedor FROM plan_externo WHERE maquina_id=? AND estado='Programado'", conn, params=(param_maquina,))
+        planes_pendientes = pd.read_sql("SELECT id, fecha_programada, proveedor FROM plan_externo WHERE maquina_id=%s AND estado='Programado'", conn, params=(param_maquina,))
         conn.close()
 
         with st.form("frm_externo"):
             if not planes_pendientes.empty:
-                st.info("Esta máquina tiene mantenimientos programados en la Matriz Anual.")
+                st.info("Esta máquina tiene mantenimientos programados.")
                 planes_pendientes['mes_fmt'] = pd.to_datetime(planes_pendientes['fecha_programada']).dt.strftime('%B %Y')
                 opciones_plan = ["No asociar a plan (Mantención Extra)"] + planes_pendientes['mes_fmt'].tolist()
-                plan_seleccionado = st.selectbox("¿A qué mes corresponde este mantenimiento?", opciones_plan)
+                plan_seleccionado = st.selectbox("¿A qué mes corresponde?", opciones_plan)
             else:
-                st.warning("No hay mantenimientos preventivos agendados. Esto se registrará como un servicio extra.")
+                st.warning("Servicio Extra (No agendado).")
                 plan_seleccionado = "No asociar a plan (Mantención Extra)"
 
             tec_ext = st.text_input("Nombre del Técnico:")
             prov_ext = st.text_input("Empresa Proveedora:")
             
             st.markdown("### 🛠️ Pauta de Mantención Técnica")
-            st.caption(f"Lista de verificación obligatoria para: **{param_maquina}**")
-            
             nombre_maq = str(param_maquina).upper()
             lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["General"]
-            
-            if "PLASMA" in nombre_maq:
-                lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["Plasma"]
-            elif "CILINDRADORA" in nombre_maq:
-                lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["Cilindradora"]
-            elif "PLEGADORA" in nombre_maq:
-                lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["Plegadora"]
-            elif "COILINE" in nombre_maq:
-                lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["Coiline"]
-            elif any(x in nombre_maq for x in ["PESTAÑERA", "PESTANERA", "TDF", "EMBALLETADORA"]):
-                lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["Rodonadora Electrica"]
+            if "PLASMA" in nombre_maq: lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["Plasma"]
+            elif "CILINDRADORA" in nombre_maq: lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["Cilindradora"]
+            elif "PLEGADORA" in nombre_maq: lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["Plegadora"]
+            elif "COILINE" in nombre_maq: lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["Coiline"]
+            elif any(x in nombre_maq for x in ["PESTAÑERA", "PESTANERA", "TDF", "EMBALLETADORA"]): lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["Rodonadora Electrica"]
             elif "RODONADORA" in nombre_maq:
-                if "ELEC" in nombre_maq or "ELÉC" in nombre_maq:
-                    lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["Rodonadora Electrica"]
-                else:
-                    lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["Rodonadora Manual"]
+                lista_checks_ext = CHECKS_EXTERNOS_MAQUINAS["Rodonadora Electrica"] if "ELEC" in nombre_maq else CHECKS_EXTERNOS_MAQUINAS["Rodonadora Manual"]
                     
-            checks_marcados_ext = []
-            for check in lista_checks_ext:
-                if st.checkbox(check, key=f"ext_{check}"):
-                    checks_marcados_ext.append(check)
+            checks_marcados_ext = [check for check in lista_checks_ext if st.checkbox(check, key=f"ext_{check}")]
             
             st.markdown("---")
-            tareas_ext = st.text_area("📝 Diagnóstico / Observaciones Técnicas:", placeholder="Detalle los ajustes realizados, piezas cambiadas o justificaciones...")
-            estado_ext = st.radio("Estado Final post-mantenimiento:", ["100% Operativo", "Requiere más reparaciones (Falla)"], horizontal=True)
-            
-            foto_ext_up = st.file_uploader("📸 Adjuntar Foto del Trabajo (Opcional)", type=['jpg', 'jpeg', 'png'], key="img_ext")
-
-            st.write("**Firma del Técnico:**")
-            canvas_ext = st_canvas(stroke_width=2, height=100, key="f_ext", background_color="#fff")
+            tareas_ext = st.text_area("📝 Diagnóstico / Observaciones Técnicas:")
+            estado_ext = st.radio("Estado Final:", ["100% Operativo", "Requiere más reparaciones (Falla)"], horizontal=True)
+            foto_ext_up = st.file_uploader("📸 Adjuntar Foto del Trabajo (Opcional)", type=['jpg', 'jpeg', 'png'])
+            st.write("**Firma del Técnico:**"); canvas_ext = st_canvas(stroke_width=2, height=100, key="f_ext", background_color="#fff")
             
             if st.form_submit_button("💾 Guardar Mantenimiento Externo"):
-                if not tec_ext.strip() or not prov_ext.strip() or not tareas_ext.strip() or canvas_ext.image_data is None:
-                    st.error("Todos los campos de texto y la firma son obligatorios.")
-                elif not checks_marcados_ext:
-                    st.error("Debe marcar al menos un ítem de la pauta de mantención técnica.")
+                if not tec_ext.strip() or not prov_ext.strip() or not tareas_ext.strip() or canvas_ext.image_data is None: st.error("Complete los datos.")
+                elif not checks_marcados_ext: st.error("Marque al menos un ítem.")
                 else:
                     fecha_dt = datetime.now(); f_str = fecha_dt.strftime("%Y-%m-%d %H:%M:%S")
                     f_path = os.path.join(CARPETA_FIRMAS, f"EXT_{param_maquina}_{fecha_dt.strftime('%Y%m%d%H%M%S')}.png")
@@ -664,26 +515,21 @@ if modo_kiosco:
                     
                     if plan_seleccionado != "No asociar a plan (Mantención Extra)":
                         mes_elegido = plan_seleccionado.split(" ")[0]
-                        id_plan_actualizar = None
-                        for _, row in planes_pendientes.iterrows():
-                            if mes_elegido in row['mes_fmt']: id_plan_actualizar = row['id']; break
+                        id_plan_actualizar = next((row['id'] for _, row in planes_pendientes.iterrows() if mes_elegido in row['mes_fmt']), None)
                         if id_plan_actualizar:
-                            c.execute("UPDATE plan_externo SET estado='Realizado', fecha_realizacion=?, proveedor=? WHERE id=?", (fecha_dt.date(), prov_ext, id_plan_actualizar))
+                            c.execute("UPDATE plan_externo SET estado='Realizado', fecha_realizacion=%s, proveedor=%s WHERE id=%s", (fecha_dt.date(), prov_ext, id_plan_actualizar))
                             conn.commit()
                     conn.close()
 
-                    st.success("✅ **Mantenimiento Externo Registrado con Éxito**")
-                    st.balloons()
-                    
                     try:
                         pdf_path = generar_pdf_checklist(param_maquina, f"{tec_ext} ({prov_ext})", fecha_dt, checks_marcados_ext, "Operativo" if es_falla==0 else "CON FALLA", tareas_ext, f_path, ruta_evidencia)
                         conn = get_connection(); c=conn.cursor()
-                        c.execute("UPDATE registros_inspeccion SET pdf_path=? WHERE rowid=?", (pdf_path, last_id))
+                        # 🔴 CORE FIX: Update con id
+                        c.execute("UPDATE registros_inspeccion SET pdf_path=%s WHERE id=%s", (pdf_path, last_id))
                         conn.commit(); conn.close()
                     except: pass
                     
-                    time.sleep(2.5) 
-                    st.rerun()
+                    st.success("Guardado."); st.balloons(); time.sleep(2); st.rerun()
 
 # ================= VISTA 2: MODO ADMIN (PC) =================
 else:
@@ -697,10 +543,11 @@ else:
         with col_f2: filtro_fecha = st.date_input("Filtrar por Fecha:", value=None)
         
         conn = get_connection()
-        query = "SELECT rowid, fecha_hora, maquina_id, operador, repuesto_necesario, pdf_path, checks_ok, comentarios, firma_path, foto_evidencia_path FROM registros_inspeccion"
+        # 🔴 CORE FIX: rowid cambiado a id
+        query = "SELECT id, fecha_hora, maquina_id, operador, repuesto_necesario, pdf_path, checks_ok, comentarios, firma_path, foto_evidencia_path FROM registros_inspeccion"
         condiciones = []; params = []
-        if filtro_maq != "Todas": condiciones.append("maquina_id = ?"); params.append(filtro_maq)
-        if filtro_fecha: condiciones.append("fecha_hora LIKE ?"); params.append(f"{filtro_fecha.strftime('%Y-%m-%d')}%")
+        if filtro_maq != "Todas": condiciones.append("maquina_id = %s"); params.append(filtro_maq)
+        if filtro_fecha: condiciones.append("fecha_hora LIKE %s"); params.append(f"{filtro_fecha.strftime('%Y-%m-%d')}%")
         if condiciones: query += " WHERE " + " AND ".join(condiciones)
         query += " ORDER BY fecha_hora DESC"
         
@@ -736,7 +583,8 @@ else:
                         new_pdf = generar_pdf_checklist(registro['maquina_id'], registro['operador'], f_dt, checks_limpios, est_str, registro['comentarios'], registro['firma_path'], foto_rut)
                         if new_pdf:
                             conn = get_connection(); c=conn.cursor()
-                            c.execute("UPDATE registros_inspeccion SET pdf_path=? WHERE rowid=?", (new_pdf, int(registro['rowid'])))
+                            # 🔴 CORE FIX: rowid cambiado a id
+                            c.execute("UPDATE registros_inspeccion SET pdf_path=%s WHERE id=%s", (new_pdf, int(registro['id'])))
                             conn.commit(); conn.close()
                             st.success("Regenerado OK."); st.rerun()
             else: st.caption("👈 Seleccione un registro.")
@@ -765,13 +613,14 @@ else:
                     prov = st.text_input("Proveedor Estimado:", "Externo")
                     if st.form_submit_button("💾 Actualizar Plan"):
                         conn = get_connection(); c = conn.cursor()
-                        c.execute("DELETE FROM plan_externo WHERE maquina_id=? AND strftime('%Y', fecha_programada)=?", (m_prog, str(anio_plan)))
+                        # 🔴 CORE FIX: SQLite strftime cambiado a PostgreSQL EXTRACT YEAR
+                        c.execute("DELETE FROM plan_externo WHERE maquina_id=%s AND EXTRACT(YEAR FROM fecha_programada::date) = %s", (m_prog, int(anio_plan)))
                         for item in datos_a_guardar:
                             mes_idx = MESES_NOMBRES.index(item["mes_nombre"]) + 1
-                            fecha_prog = date(anio_plan, mes_idx, 1)
+                            fecha_prog = date(int(anio_plan), mes_idx, 1)
                             estado = "Realizado" if item["hecho"] else "Programado"
                             f_real_db = item["fecha_real"] if item["hecho"] else None
-                            c.execute("""INSERT INTO plan_externo (maquina_id, fecha_programada, proveedor, estado, fecha_realizacion) VALUES (?,?,?,?,?)""", (m_prog, fecha_prog, prov, estado, f_real_db))
+                            c.execute("""INSERT INTO plan_externo (maquina_id, fecha_programada, proveedor, estado, fecha_realizacion) VALUES (%s,%s,%s,%s,%s)""", (m_prog, fecha_prog, prov, estado, f_real_db))
                         conn.commit(); conn.close(); st.success("Plan actualizado."); st.rerun()
 
         with col_view:
@@ -813,7 +662,7 @@ else:
                     path = os.path.join(CARPETA_EVIDENCIAS, f"EVID_PROV_{eid}_{pdf.name}")
                     with open(path, "wb") as f: f.write(pdf.getbuffer())
                     conn = get_connection(); c=conn.cursor()
-                    c.execute("UPDATE plan_externo SET evidencia_pdf_path=? WHERE id=?", (path, eid))
+                    c.execute("UPDATE plan_externo SET evidencia_pdf_path=%s WHERE id=%s", (path, eid))
                     conn.commit(); conn.close(); st.success("Guardado."); st.rerun()
             else: st.info("Todo documentado.")
 
@@ -833,7 +682,7 @@ else:
                     if new_id.strip():
                         new_id_clean = new_id.strip().upper().replace(" ", "_")
                         conn = get_connection(); c = conn.cursor()
-                        c.execute("SELECT id FROM maquinas WHERE id=?", (new_id_clean,))
+                        c.execute("SELECT id FROM maquinas WHERE id=%s", (new_id_clean,))
                         if c.fetchone():
                             st.error("Esta máquina ya existe.")
                         else:
@@ -841,7 +690,7 @@ else:
                             if new_img:
                                 ruta_foto = os.path.join(CARPETA_FOTOS, f"{new_id_clean}_{new_img.name}")
                                 with open(ruta_foto, "wb") as f: f.write(new_img.getbuffer())
-                            c.execute("INSERT INTO maquinas (id, nombre, foto_path) VALUES (?, ?, ?)", (new_id_clean, new_name, ruta_foto))
+                            c.execute("INSERT INTO maquinas (id, nombre, foto_path) VALUES (%s, %s, %s)", (new_id_clean, new_name, ruta_foto))
                             conn.commit(); conn.close()
                             st.success(f"Agregada: {new_id_clean}")
                             st.rerun()
@@ -854,7 +703,7 @@ else:
                 maq_a_borrar = st.selectbox("Seleccione la máquina:", maquinas_actuales)
                 if st.button("Eliminar Máquina"):
                     conn = get_connection(); c = conn.cursor()
-                    c.execute("DELETE FROM maquinas WHERE id=?", (maq_a_borrar,))
+                    c.execute("DELETE FROM maquinas WHERE id=%s", (maq_a_borrar,))
                     conn.commit(); conn.close()
                     st.success(f"Eliminada: {maq_a_borrar}")
                     st.rerun()
@@ -863,7 +712,7 @@ else:
 
         with c_qr:
             st.markdown("### 🖨️ Generador de QR")
-            u = st.text_input("URL Base del Sistema (ngrok):")
+            u = st.text_input("URL Base del Sistema (ngrok o share.streamlit.io):")
             if st.button("Generar QRs"):
                 if u.strip():
                     maquinas_generar = get_maquinas_lista()
