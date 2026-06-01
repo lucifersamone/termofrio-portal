@@ -22,20 +22,34 @@ st.set_page_config(
     layout="wide"
 )
 
-# 🔄 CORE FIX: REDIRECCIÓN AUTOMÁTICA SEGURA PARA QR
-# 🔄 PUENTE DE REDIRECCIÓN QR BLINDADO (Abajo de st.set_page_config)
+# === 📲 CONTROL DE REDIRECCIÓN QR BLINDADO (Colocar justo debajo de st.set_page_config) ===
 if "maquina" in st.query_params:
-    try:
-        # Intento 1: Ruta estándar de carpetas
-        st.switch_page("pages/02_Mantencion.py")
-    except Exception as e:
-        try:
-            # Intento 2: Ruta directa por si la nube omitió el prefijo 'pages/'
-            st.switch_page("02_Mantencion.py")
-        except Exception as e2:
-            # Si ambas fallan, mostramos el error limpio en vez de dejar que la app colapse
-            st.error(f"⚠️ Error en el desvío automático de máquina: {e2}")
-            st.info("Por favor, navega manualmente a la pestaña 'Mantención' en el menú de la izquierda.")
+    # 1. Inicializamos un rol básico para que la página de mantención no se caiga por falta de variables
+    if "rol" not in st.session_state:
+        st.session_state.rol = "operario"
+    
+    # Limpiamos el nombre de la máquina para mostrarlo estético en pantalla
+    nombre_maquina_limpio = str(st.query_params["maquina"]).upper().replace("_", " ")
+    
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    
+    # 2. Mostramos una interfaz limpia exclusiva para el operario en el taller
+    with st.container(border=True):
+        st.subheader(f"⚙️ Sistema de Inspección Detectado")
+        st.markdown(f"Vas a realizar la mantención de la máquina: **{nombre_maquina_limpio}**")
+        st.info("Conexión con el servidor de Supabase establecida con éxito.")
+        st.caption("Presiona el botón de abajo para abrir la hoja de firmas y el checklist oficial.")
+        
+        # Al hacer clic, la conexión ya está 100% abierta y la nube permite el paso libre
+        if st.button(f"🚀 Comenzar Inspección: {nombre_maquina_limpio}", use_container_width=True, type="primary"):
+            try:
+                st.switch_page("pages/02_Mantencion.py")
+            except Exception:
+                st.switch_page("02_Mantencion.py")
+                
+    # 3. CRUCIAL: Detiene el código aquí para que el operario NO vea la pantalla de inicio de sesión normal de la PC detrás
+    st.stop()
+# ====================================================================================
 
 # --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.4 - COMPLETO Y ALINEADO) ---
 class SQLiteToPostgresCursor:
