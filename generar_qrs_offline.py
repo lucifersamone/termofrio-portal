@@ -2,8 +2,8 @@ import os
 import qrcode
 import pandas as pd
 
-# 1. Configuración de la dirección oficial en internet (RAÍZ SEGURA)
-URL_PROD = "https://termofrio-portal.streamlit.app"
+# 🔴 TU URL REAL Y OFICIAL EN INTERNET
+URL_PROD = "https://termofrio-app-7t8hkxxpr9cieryygrxyaw.streamlit.app"
 CARPETA_QRS = "qrs_nuevos"
 
 if not os.path.exists(CARPETA_QRS):
@@ -31,16 +31,16 @@ except Exception as e:
         "GUILLOTINA_1", "RODONADORA_1", "PESTAÑERA_1", "TDF_1", "EMBALLETADORA_1"
     ]
 
-print("\n🚀 Generando códigos QR con puente de redirección...")
+print("\n🚀 Fabricando códigos QR de acceso directo de taller...")
 for m in maquinas:
     m_clean = str(m).strip().upper().replace(" ", "_")
     
-    # 🔴 CAMBIO DE ESTRATEGIA: Apunta a la raíz con /?maquina para evitar el bloqueo del proxy
-    url_final = f"{URL_PROD}?maquina={m_clean}&v=3"
+    # Construcción limpia usando la URL que no rebota
+    url_final = f"{URL_PROD}/?maquina={m_clean}"
     ruta_guardado = os.path.join(CARPETA_QRS, f"qr_{m_clean}.png")
     
     qr = qrcode.make(url_final)
     qr.save(ruta_guardado)
-    print(f"✅ Creado: {ruta_guardado} ➡️ {url_final}")
+    print(f"✅ QR Creado: {ruta_guardado} ➡️ {url_final}")
 
-print("\n🎉 ¡Nuevos QRs generados con éxito con el puente de seguridad instalado!")
+print("\n🎉 ¡Todos los QRs de las máquinas han sido generados exitosamente!")
