@@ -23,8 +23,19 @@ st.set_page_config(
 )
 
 # 🔄 CORE FIX: REDIRECCIÓN AUTOMÁTICA SEGURA PARA QR
+# 🔄 PUENTE DE REDIRECCIÓN QR BLINDADO (Abajo de st.set_page_config)
 if "maquina" in st.query_params:
-    st.switch_page("pages/02_Mantencion.py")
+    try:
+        # Intento 1: Ruta estándar de carpetas
+        st.switch_page("pages/02_Mantencion.py")
+    except Exception as e:
+        try:
+            # Intento 2: Ruta directa por si la nube omitió el prefijo 'pages/'
+            st.switch_page("02_Mantencion.py")
+        except Exception as e2:
+            # Si ambas fallan, mostramos el error limpio en vez de dejar que la app colapse
+            st.error(f"⚠️ Error en el desvío automático de máquina: {e2}")
+            st.info("Por favor, navega manualmente a la pestaña 'Mantención' en el menú de la izquierda.")
 
 # --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.4 - COMPLETO Y ALINEADO) ---
 class SQLiteToPostgresCursor:

@@ -36,7 +36,7 @@ for m in maquinas:
     m_clean = str(m).strip().upper().replace(" ", "_")
     
     # 🔴 CAMBIO DE ESTRATEGIA: Apunta a la raíz con /?maquina para evitar el bloqueo del proxy
-    url_final = f"{URL_PROD}?maquina={m_clean}"
+    url_final = f"{URL_PROD}?maquina={m_clean}&v=3"
     ruta_guardado = os.path.join(CARPETA_QRS, f"qr_{m_clean}.png")
     
     qr = qrcode.make(url_final)
