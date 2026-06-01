@@ -17,6 +17,11 @@ from fpdf import FPDF
 import psycopg2
 import re
 
+st.set_page_config(
+    page_title="Portal Termofrio", # O el título que tú le tengas puesto
+    layout="wide"
+)
+
 # 🔄 CORE FIX: REDIRECCIÓN AUTOMÁTICA SEGURA PARA QR
 if "maquina" in st.query_params:
     st.switch_page("pages/02_Mantencion.py")
