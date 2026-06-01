@@ -24,15 +24,19 @@ st.set_page_config(
 )
 
 # ====================================================================================
-# 🚀 BYPASS AUTOMÁTICO PARA OPERARIOS (ENTRADA DIRECTA DESDE QR SIN LOGIN)
+# 🚀 GUARDiÁN ULTRA-BLINDADO: ENTRADA DIRECTA DESDE QR SIN LOGIN
 # ====================================================================================
 if "maquina" in st.query_params:
-    # Le otorgamos el rol de operario de forma automática para saltar el formulario
+    # 1. Activamos todas las variables de sesión posibles para engañar a los candados de seguridad
     st.session_state["rol"] = "operario"
-    # Guardamos la máquina del QR en la memoria para que la pestaña de mantención la lea
+    st.session_state["usuario"] = "Operario Taller"
+    st.session_state["autenticado"] = True
+    st.session_state["logueado"] = True
+    
+    # 2. Capturamos la máquina seleccionada
     st.session_state["maquina_seleccionada_qr"] = st.query_params["maquina"]
     
-    # Lo mandamos directo y sin escalas al formulario de checklist
+    # 3. Forzamos el salto inmediato al checklist
     try:
         st.switch_page("pages/02_Mantencion.py")
     except Exception:
