@@ -17,39 +17,15 @@ from fpdf import FPDF
 import psycopg2
 import re
 
+# 1. Configuración obligatoria de Streamlit
 st.set_page_config(
-    page_title="Portal Termofrio", # O el título que tú le tengas puesto
+    page_title="Portal Termofrio",
     layout="wide"
 )
 
-# === 📲 CONTROL DE REDIRECCIÓN QR BLINDADO (Colocar justo debajo de st.set_page_config) ===
-if "maquina" in st.query_params:
-    # 1. Inicializamos un rol básico para que la página de mantención no se caiga por falta de variables
-    if "rol" not in st.session_state:
-        st.session_state.rol = "operario"
-    
-    # Limpiamos el nombre de la máquina para mostrarlo estético en pantalla
-    nombre_maquina_limpio = str(st.query_params["maquina"]).upper().replace("_", " ")
-    
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    
-    # 2. Mostramos una interfaz limpia exclusiva para el operario en el taller
-    with st.container(border=True):
-        st.subheader(f"⚙️ Sistema de Inspección Detectado")
-        st.markdown(f"Vas a realizar la mantención de la máquina: **{nombre_maquina_limpio}**")
-        st.info("Conexión con el servidor de Supabase establecida con éxito.")
-        st.caption("Presiona el botón de abajo para abrir la hoja de firmas y el checklist oficial.")
-        
-        # Al hacer clic, la conexión ya está 100% abierta y la nube permite el paso libre
-        if st.button(f"🚀 Comenzar Inspección: {nombre_maquina_limpio}", use_container_width=True, type="primary"):
-            try:
-                st.switch_page("pages/02_Mantencion.py")
-            except Exception:
-                st.switch_page("02_Mantencion.py")
-                
-    # 3. CRUCIAL: Detiene el código aquí para que el operario NO vea la pantalla de inicio de sesión normal de la PC detrás
-    st.stop()
-# ====================================================================================
+# Inicializar estados de sesión básicos para que no fallen las pestañas
+if "rol" not in st.session_state:
+    st.session_state.rol = "operario"
 
 # --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.4 - COMPLETO Y ALINEADO) ---
 class SQLiteToPostgresCursor:
@@ -1331,106 +1307,127 @@ with tabs_admin[0]:
 
     st.divider()
 
-    st.subheader("👷 Estado Histórico de Activos del Taller")
-    st.caption("Selecciona un día para ver cómo estaban las máquinas en esa fecha exacta.")
-    fecha_foto = st.date_input("📸 Fecha de Evaluación de Máquinas", value=datetime.now().date())
-
+    # ====================================================================================
+# 📱 ACCESO RÁPIDO PARA OPERARIOS (Evita el bug de redirección en celulares)
+# ====================================================================================
+with st.expander("🚀 ACCESO RÁPIDO: MANTENCIÓN DE MÁQUINAS", expanded=True):
+    st.markdown("Selecciona el equipo que vas a inspeccionar para abrir su formulario de inmediato:")
+    
     try:
         conn_m = get_connection()
-        df_maq = pd.read_sql("SELECT id, nombre, foto_path FROM maquinas", conn_m)
-        df_insp = pd.read_sql("SELECT maquina_id, fecha_hora, repuesto_necesario FROM registros_inspeccion ORDER BY fecha_hora DESC", conn_m)
+        # Aquí ya funciona perfecto porque Python leyó la función get_connection líneas arriba
+        lista_maquinas = pd.read_sql("SELECT nombre FROM maquinas ORDER BY nombre", conn_m)['nombre'].tolist()
         conn_m.close()
+    except Exception:
+        # Lista de respaldo por si la base de datos tarda en responder
+        lista_maquinas = ["CILINDRADORA_1", "CNC_1_PLASMA", "COILINE", "PLEGADORA_1", "GUILLOTINA_1"]
         
-        if not df_maq.empty:
-            inicio_semana_foto = fecha_foto - timedelta(days=fecha_foto.weekday())
-            df_insp['fecha_dt'] = pd.to_datetime(df_insp['fecha_hora'], format='mixed', errors='coerce')
-            limite_tiempo = pd.to_datetime(fecha_foto) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1) 
-            df_insp_foto = df_insp[df_insp['fecha_dt'] <= limite_tiempo].copy()
-            
-            count_op, count_pen, count_falla = 0, 0, 0
-            estados_maq = {}
-            for _, maq in df_maq.iterrows():
-                mid = maq['id']
-                recs = df_insp_foto[df_insp_foto['maquina_id'] == mid]
-                if recs.empty:
-                    estados_maq[mid] = {'txt': 'Sin Registros en esa fecha', 'color': '#7f8c8d', 'icon': '⚪'}
-                    count_pen += 1
-                else:
-                    ultima_inspeccion = recs.iloc[0]
-                    fecha_ult = ultima_inspeccion['fecha_dt'].date()
-                    if fecha_ult >= inicio_semana_foto:
-                        if ultima_inspeccion['repuesto_necesario'] == 1:
-                            estados_maq[mid] = {'txt': 'Con Falla', 'color': '#e74c3c', 'icon': '🔴'}; count_falla += 1
-                        else:
-                            estados_maq[mid] = {'txt': 'Operativa (Al Día)', 'color': '#27ae60', 'icon': '🟢'}; count_op += 1
+    maquina_elegida = st.selectbox("Seleccione Máquina Activa:", ["-- Selecciona una máquina --"] + lista_maquinas)
+    
+    if maquina_elegida != "-- Selecciona una máquina --":
+        if st.button("📝 Abrir Checklist y Hoja de Firma", use_container_width=True, type="primary"):
+            st.session_state["maquina_seleccionada_qr"] = maquina_elegida
+            st.switch_page("pages/02_Mantencion.py")
+st.divider()
+# ====================================================================================
+
+
+# ====================================================================================
+# 👷 ESTADO HISTÓRICO DE ACTIVOS DEL TALLER (Tu bloque original con buscador de fotos)
+# ====================================================================================
+st.subheader("👷 Estado Histórico de Activos del Taller")
+st.caption("Selecciona un día para ver cómo estaban las máquinas en esa fecha exacta.")
+fecha_foto = st.date_input("📸 Fecha de Evaluación de Máquinas", value=datetime.now().date())
+
+try:
+    conn_m = get_connection()
+    df_maq = pd.read_sql("SELECT id, nombre, foto_path FROM maquinas", conn_m)
+    df_insp = pd.read_sql("SELECT maquina_id, fecha_hora, repuesto_necesario FROM registros_inspeccion ORDER BY fecha_hora DESC", conn_m)
+    conn_m.close()
+    
+    if not df_maq.empty:
+        inicio_semana_foto = fecha_foto - timedelta(days=fecha_foto.weekday())
+        df_insp['fecha_dt'] = pd.to_datetime(df_insp['fecha_hora'], format='mixed', errors='coerce')
+        limite_tiempo = pd.to_datetime(fecha_foto) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1) 
+        df_insp_foto = df_insp[df_insp['fecha_dt'] <= limite_tiempo].copy()
+        
+        count_op, count_pen, count_falla = 0, 0, 0
+        estados_maq = {}
+        for _, maq in df_maq.iterrows():
+            mid = maq['id']
+            recs = df_insp_foto[df_insp_foto['maquina_id'] == mid]
+            if recs.empty:
+                estados_maq[mid] = {'txt': 'Sin Registros en esa fecha', 'color': '#7f8c8d', 'icon': '⚪'}
+                count_pen += 1
+            else:
+                ultima_inspeccion = recs.iloc[0]
+                fecha_ult = ultima_inspeccion['fecha_dt'].date()
+                if fecha_ult >= inicio_semana_foto:
+                    if ultima_inspeccion['repuesto_necesario'] == 1:
+                        estados_maq[mid] = {'txt': 'Con Falla', 'color': '#e74c3c', 'icon': '🔴'}; count_falla += 1
                     else:
-                        estados_maq[mid] = {'txt': 'Revisión Pendiente', 'color': '#f39c12', 'icon': '🟡'}; count_pen += 1
+                        estados_maq[mid] = {'txt': 'Operativa (Al Día)', 'color': '#27ae60', 'icon': '🟢'}; count_op += 1
+                else:
+                    estados_maq[mid] = {'txt': 'Revisión Pendiente', 'color': '#f39c12', 'icon': '🟡'}; count_pen += 1
 
-            st.markdown("##### 📊 Resumen del Día Seleccionado")
-            c_res1, c_res2, c_res3 = st.columns(3)
-            c_res1.metric("🟢 Máquinas Operativas", count_op)
-            c_res2.metric("🟡 Revisiones Pendientes", count_pen)
-            c_res3.metric("🔴 En Falla", count_falla)
-            st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("##### 📊 Resumen del Día Seleccionado")
+        c_res1, c_res2, c_res3 = st.columns(3)
+        c_res1.metric("🟢 Máquinas Operativas", count_op)
+        c_res2.metric("🟡 Revisiones Pendientes", count_pen)
+        c_res3.metric("🔴 En Falla", count_falla)
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        cols = st.columns(4)
+        for i, (_, maq) in enumerate(df_maq.iterrows()):
+            mid = maq['id']
+            stat = estados_maq[mid]
+            ruta_img = maq['foto_path']
             
-            cols = st.columns(4)
-            for i, (_, maq) in enumerate(df_maq.iterrows()):
-                mid = maq['id']
-                stat = estados_maq[mid]
-                ruta_img = maq['foto_path']
-                
-                with cols[i % 4]:
-                    with st.container(border=True):
+            with cols[i % 4]:
+                with st.container(border=True):
+                    
+                    # 📸 Buscador automático que repara rutas de la BD en la nube
+                    final_path = None
+                    if pd.notna(ruta_img) and str(ruta_img).strip() != "" and os.path.exists(str(ruta_img)):
+                        final_path = str(ruta_img)
+                    else:
+                        dir_actual = os.path.dirname(os.path.abspath(__file__))
+                        root_dir = os.path.dirname(dir_actual) if "pages" in dir_actual.lower() else dir_actual
+                        carpeta_maquinas = os.path.join(root_dir, "img_maquinas")
                         
-                        # ==========================================================
-                        # 📸 BUSCADOR AUTOMÁTICO CLAVE (EVITA ERRORES DE EXTENSIÓN/RUTA)
-                        # ==========================================================
-                        final_path = None
-                        
-                        # 1. Verificar si la ruta original guardada en la BD es válida
-                        if pd.notna(ruta_img) and str(ruta_img).strip() != "" and os.path.exists(str(ruta_img)):
-                            final_path = str(ruta_img)
-                        else:
-                            # 2. Mapeo inteligente por ID de máquina en el directorio del proyecto
-                            dir_actual = os.path.dirname(os.path.abspath(__file__))
-                            root_dir = os.path.dirname(dir_actual) if "pages" in dir_actual.lower() else dir_actual
-                            carpeta_maquinas = os.path.join(root_dir, "img_maquinas")
-                            
-                            if os.path.exists(carpeta_maquinas):
-                                id_buscado = str(mid).upper().strip()
-                                for archivo_disco in os.listdir(carpeta_maquinas):
-                                    nombre_disco, _ = os.path.splitext(archivo_disco)
-                                    if nombre_disco.upper().strip() == id_buscado:
-                                        final_path = os.path.join(carpeta_maquinas, archivo_disco)
-                                        break
-                        
-                        # Desplegar la imagen procesada o el cuadro vacío estándar
-                        if final_path:
-                            with open(final_path, "rb") as f: 
-                                b64 = base64.b64encode(f.read()).decode()
-                            st.markdown(f'<img src="data:image/png;base64,{b64}" style="width:100%; height:150px; object-fit:cover; border-radius:5px;">', unsafe_allow_html=True)
-                        else: 
-                            st.markdown('<div style="width:100%; height:150px; background-color:#ecf0f1; border-radius:5px; display:flex; align-items:center; justify-content:center; color:#bdc3c7; font-weight:bold;">Sin foto</div>', unsafe_allow_html=True)
-                        # ==========================================================
-                        
-                        st.markdown(f"**{mid}**")
-                        st.markdown(f"<h5>{stat['icon']} <span style='color: {stat['color']};'>{stat['txt']}</span></h5>", unsafe_allow_html=True)
-        else: st.info("No hay máquinas registradas en el sistema.")
-    except Exception as e: st.error(f"Error cargando base de Mantenimiento: {e}")
+                        if os.path.exists(carpeta_maquinas):
+                            id_buscado = str(mid).upper().strip()
+                            for archivo_disco in os.listdir(carpeta_maquinas):
+                                nombre_disco, _ = os.path.splitext(archivo_disco)
+                                if nombre_disco.upper().strip() == id_buscado:
+                                    final_path = os.path.join(carpeta_maquinas, archivo_disco)
+                                    break
+                    
+                    if final_path:
+                        with open(final_path, "rb") as f: 
+                            b64 = base64.b64encode(f.read()).decode()
+                        st.markdown(f'<img src="data:image/png;base64,{b64}" style="width:100%; height:150px; object-fit:cover; border-radius:5px;">', unsafe_allow_html=True)
+                    else: 
+                        st.markdown('<div style="width:100%; height:150px; background-color:#ecf0f1; border-radius:5px; display:flex; align-items:center; justify-content:center; color:#bdc3c7; font-weight:bold;">Sin foto</div>', unsafe_allow_html=True)
+                    
+                    st.markdown(f"**{mid}**")
+                    st.markdown(f"<h5>{stat['icon']} <span style='color: {stat['color']};'>{stat['txt']}</span></h5>", unsafe_allow_html=True)
+    else: st.info("No hay máquinas registradas en el sistema.")
+except Exception as e: st.error(f"Error cargando base de Mantenimiento: {e}")
 
-    if st.session_state.rol == "gerencia":
-        st.divider()
-        st.subheader("📋 Conglomerado Total de Pedidos")
-        st.caption("🔒 Modo Solo Lectura: Listado completo histórico de todas las obras.")
-        try:
-            conn_g = get_connection()
-            query_gerencia = """
-            SELECT num_pedido as "N° Pedido", tf as "TF", obra_codigo as "Obra", 
-            quien_envia as "Solicitante", estado as "Estado", fecha_recepcion as "Ingreso", 
-            kg_estimados as "Kg Est.", kg_reales as "Kg Reales" 
-            FROM pedidostf ORDER BY id DESC
-            """
-            df_todos = pd.read_sql(query_gerencia, conn_g)
-            conn_g.close()
-            st.dataframe(df_todos, use_container_width=True, hide_index=True)
-        except Exception as e: st.error(f"Error cargando la base de datos para gerencia: {e}")
+if st.session_state.rol == "gerencia":
+    st.divider()
+    st.subheader("📋 Conglomerado Total de Pedidos")
+    st.caption("🔒 Modo Solo Lectura: Listado completo histórico de todas las obras.")
+    try:
+        conn_g = get_connection()
+        query_gerencia = """
+        SELECT num_pedido as "N° Pedido", tf as "TF", obra_codigo as "Obra", 
+        quien_envia as "Solicitante", estado as "Estado", fecha_recepcion as "Ingreso", 
+        kg_estimados as "Kg Est.", kg_reales as "Kg Reales" 
+        FROM pedidostf ORDER BY id DESC
+        """
+        df_todos = pd.read_sql(query_gerencia, conn_g)
+        conn_g.close()
+        st.dataframe(df_todos, use_container_width=True, hide_index=True)
+    except Exception as e: st.error(f"Error cargando la base de datos para gerencia: {e}")
