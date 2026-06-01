@@ -17,6 +17,10 @@ from fpdf import FPDF
 import psycopg2
 import re
 
+# 🔄 CORE FIX: REDIRECCIÓN AUTOMÁTICA SEGURA PARA QR
+if "maquina" in st.query_params:
+    st.switch_page("pages/02_Mantencion.py")
+
 # --- ADAPTADOR INVISIBLE PARA SUPABASE (VERSION 2.4 - COMPLETO Y ALINEADO) ---
 class SQLiteToPostgresCursor:
     def __init__(self, pg_cursor):
