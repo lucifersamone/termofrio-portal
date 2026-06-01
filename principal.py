@@ -1324,31 +1324,6 @@ with tabs_admin[0]:
 
     st.divider()
 
-    # ====================================================================================
-# 📱 ACCESO RÁPIDO PARA OPERARIOS (Evita el bug de redirección en celulares)
-# ====================================================================================
-with st.expander("🚀 ACCESO RÁPIDO: MANTENCIÓN DE MÁQUINAS", expanded=True):
-    st.markdown("Selecciona el equipo que vas a inspeccionar para abrir su formulario de inmediato:")
-    
-    try:
-        conn_m = get_connection()
-        # Aquí ya funciona perfecto porque Python leyó la función get_connection líneas arriba
-        lista_maquinas = pd.read_sql("SELECT nombre FROM maquinas ORDER BY nombre", conn_m)['nombre'].tolist()
-        conn_m.close()
-    except Exception:
-        # Lista de respaldo por si la base de datos tarda en responder
-        lista_maquinas = ["CILINDRADORA_1", "CNC_1_PLASMA", "COILINE", "PLEGADORA_1", "GUILLOTINA_1"]
-        
-    maquina_elegida = st.selectbox("Seleccione Máquina Activa:", ["-- Selecciona una máquina --"] + lista_maquinas)
-    
-    if maquina_elegida != "-- Selecciona una máquina --":
-        if st.button("📝 Abrir Checklist y Hoja de Firma", use_container_width=True, type="primary"):
-            st.session_state["maquina_seleccionada_qr"] = maquina_elegida
-            st.switch_page("pages/02_Mantencion.py")
-st.divider()
-# ====================================================================================
-
-
 # ====================================================================================
 # 👷 ESTADO HISTÓRICO DE ACTIVOS DEL TALLER (Tu bloque original con buscador de fotos)
 # ====================================================================================
