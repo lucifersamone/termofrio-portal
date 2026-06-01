@@ -10,3 +10,4 @@ pillow
 reportlab
 psycopg2-binary
 openpyxl
+streamlit-drawable-canvas
