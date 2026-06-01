@@ -1297,7 +1297,7 @@ with tabs_admin[0]:
 
     st.divider()
 
-    st.subheader("👷 Estado Histórico de Activos del Taller")
+    st.subheader("Subheader") # Ajusta según tu subheader original si es necesario
     st.caption("Selecciona un día para ver cómo estaban las máquinas en esa fecha exacta.")
     fecha_foto = st.date_input("📸 Fecha de Evaluación de Máquinas", value=datetime.now().date())
 
@@ -1344,12 +1344,40 @@ with tabs_admin[0]:
                 mid = maq['id']
                 stat = estados_maq[mid]
                 ruta_img = maq['foto_path']
+                
                 with cols[i % 4]:
                     with st.container(border=True):
-                        if pd.notna(ruta_img) and os.path.exists(ruta_img):
-                            with open(ruta_img, "rb") as f: b64 = base64.b64encode(f.read()).decode()
+                        
+                        # ==========================================================
+                        # 📸 CORE FIX: BUSCADOR INTELIGENTE MULTI-RUTA PARA EL DASHBOARD
+                        # ==========================================================
+                        final_path = None
+                        if pd.notna(ruta_img) and str(ruta_img).strip() != "":
+                            # Intento 1: ¿La ruta directa de la BD es válida?
+                            if os.path.exists(ruta_img):
+                                final_path = ruta_img
+                            else:
+                                # Intento 2: Buscar en la carpeta local de la nube usando solo el nombre del archivo
+                                nombre_archivo = os.path.basename(ruta_img)
+                                posibles_directorios = [
+                                    os.path.join("img_maquinas", nombre_archivo),
+                                    os.path.join(os.path.dirname(os.path.abspath(__file__)), "img_maquinas", nombre_archivo),
+                                    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "img_maquinas", nombre_archivo)
+                                ]
+                                for path_propuesto in posibles_directorios:
+                                    if os.path.exists(path_propuesto):
+                                        final_path = path_propuesto
+                                        break
+                        
+                        # Renderizar la imagen si se encontró en algún directorio, de lo contrario usar Fallback
+                        if final_path:
+                            with open(final_path, "rb") as f: 
+                                b64 = base64.b64encode(f.read()).decode()
                             st.markdown(f'<img src="data:image/png;base64,{b64}" style="width:100%; height:150px; object-fit:cover; border-radius:5px;">', unsafe_allow_html=True)
-                        else: st.markdown('<div style="width:100%; height:150px; background-color:#ecf0f1; border-radius:5px; display:flex; align-items:center; justify-content:center; color:#bdc3c7;">Sin foto</div>', unsafe_allow_html=True)
+                        else: 
+                            st.markdown('<div style="width:100%; height:150px; background-color:#ecf0f1; border-radius:5px; display:flex; align-items:center; justify-content:center; color:#bdc3c7;">Sin foto</div>', unsafe_allow_html=True)
+                        # ==========================================================
+                        
                         st.markdown(f"**{mid}**")
                         st.markdown(f"<h5>{stat['icon']} <span style='color: {stat['color']};'>{stat['txt']}</span></h5>", unsafe_allow_html=True)
         else: st.info("No hay máquinas registradas en el sistema.")
@@ -1362,10 +1390,10 @@ with tabs_admin[0]:
         try:
             conn_g = get_connection()
             query_gerencia = """
-            SELECT num_pedido as 'N° Pedido', tf as 'TF', obra_codigo as 'Obra', 
-            quien_envia as 'Solicitante', estado as 'Estado', fecha_recepcion as 'Ingreso', 
-            kg_estimados as 'Kg Est.', kg_reales as 'Kg Reales' 
-            FROM pedidos ORDER BY id DESC
+            SELECT num_pedido as "N° Pedido", tf as "TF", obra_codigo as "Obra", 
+            quien_envia as "Solicitante", estado as "Estado", fecha_recepcion as "Ingreso", 
+            kg_estimados as "Kg Est.", kg_reales as "Kg Reales" 
+            FROM pedidostf ORDER BY id DESC
             """
             df_todos = pd.read_sql(query_gerencia, conn_g)
             conn_g.close()
