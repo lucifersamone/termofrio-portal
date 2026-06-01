@@ -1297,7 +1297,7 @@ with tabs_admin[0]:
 
     st.divider()
 
-    st.subheader("Subheader") # Ajusta según tu subheader original si es necesario
+    st.subheader("👷 Estado Histórico de Activos del Taller")
     st.caption("Selecciona un día para ver cómo estaban las máquinas en esa fecha exacta.")
     fecha_foto = st.date_input("📸 Fecha de Evaluación de Máquinas", value=datetime.now().date())
 
@@ -1349,33 +1349,34 @@ with tabs_admin[0]:
                     with st.container(border=True):
                         
                         # ==========================================================
-                        # 📸 CORE FIX: BUSCADOR INTELIGENTE MULTI-RUTA PARA EL DASHBOARD
+                        # 📸 BUSCADOR AUTOMÁTICO CLAVE (EVITA ERRORES DE EXTENSIÓN/RUTA)
                         # ==========================================================
                         final_path = None
-                        if pd.notna(ruta_img) and str(ruta_img).strip() != "":
-                            # Intento 1: ¿La ruta directa de la BD es válida?
-                            if os.path.exists(ruta_img):
-                                final_path = ruta_img
-                            else:
-                                # Intento 2: Buscar en la carpeta local de la nube usando solo el nombre del archivo
-                                nombre_archivo = os.path.basename(ruta_img)
-                                posibles_directorios = [
-                                    os.path.join("img_maquinas", nombre_archivo),
-                                    os.path.join(os.path.dirname(os.path.abspath(__file__)), "img_maquinas", nombre_archivo),
-                                    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "img_maquinas", nombre_archivo)
-                                ]
-                                for path_propuesto in posibles_directorios:
-                                    if os.path.exists(path_propuesto):
-                                        final_path = path_propuesto
+                        
+                        # 1. Verificar si la ruta original guardada en la BD es válida
+                        if pd.notna(ruta_img) and str(ruta_img).strip() != "" and os.path.exists(str(ruta_img)):
+                            final_path = str(ruta_img)
+                        else:
+                            # 2. Mapeo inteligente por ID de máquina en el directorio del proyecto
+                            dir_actual = os.path.dirname(os.path.abspath(__file__))
+                            root_dir = os.path.dirname(dir_actual) if "pages" in dir_actual.lower() else dir_actual
+                            carpeta_maquinas = os.path.join(root_dir, "img_maquinas")
+                            
+                            if os.path.exists(carpeta_maquinas):
+                                id_buscado = str(mid).upper().strip()
+                                for archivo_disco in os.listdir(carpeta_maquinas):
+                                    nombre_disco, _ = os.path.splitext(archivo_disco)
+                                    if nombre_disco.upper().strip() == id_buscado:
+                                        final_path = os.path.join(carpeta_maquinas, archivo_disco)
                                         break
                         
-                        # Renderizar la imagen si se encontró en algún directorio, de lo contrario usar Fallback
+                        # Desplegar la imagen procesada o el cuadro vacío estándar
                         if final_path:
                             with open(final_path, "rb") as f: 
                                 b64 = base64.b64encode(f.read()).decode()
                             st.markdown(f'<img src="data:image/png;base64,{b64}" style="width:100%; height:150px; object-fit:cover; border-radius:5px;">', unsafe_allow_html=True)
                         else: 
-                            st.markdown('<div style="width:100%; height:150px; background-color:#ecf0f1; border-radius:5px; display:flex; align-items:center; justify-content:center; color:#bdc3c7;">Sin foto</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="width:100%; height:150px; background-color:#ecf0f1; border-radius:5px; display:flex; align-items:center; justify-content:center; color:#bdc3c7; font-weight:bold;">Sin foto</div>', unsafe_allow_html=True)
                         # ==========================================================
                         
                         st.markdown(f"**{mid}**")
