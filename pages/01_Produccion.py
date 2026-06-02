@@ -1272,23 +1272,45 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                 if st.button("🚀 Procesar PDF Automático", key="btn_proc_pdf"):
                     fila_pdf = term[term['num_pedido'].astype(str) + " / " + term['obra_codigo']==sel_pdf].iloc[0]
                     
-                    with st.spinner("Generando PDF Oficial de Despacho..."):
-                        ruta_pdf = generar_pdf_firmado(ticket_id=fila_pdf['num_pedido'], kg_reales=fila_pdf['kg_reales'])
-                        if ruta_pdf:
-                            st.session_state.pdf_tmp = ruta_pdf
-                            st.session_state.pdf_num = fila_pdf['num_pedido']
-                            st.session_state.pdf_obra = fila_pdf['obra_codigo']
-                            st.session_state.pdf_solic = str(fila_pdf.get('quien_envia', '')).strip()
-                            st.session_state.pdf_kg = fila_pdf['kg_reales']
-                            st.success("✅ Archivo PDF Generado exitosamente.")
-                        else:
-                            st.error("❌ Error al generar el PDF.")
-                
+                    with st.spinner("Preparando Documento Oficial de Despacho..."):
+                    # 🚦 SEMÁFORO DE ARCHIVOS: Detectamos de dónde viene el pedido
+                     es_masiva = ('fuente' in fila_pdf and str(fila_pdf['fuente']).strip() == 'Carga Masiva')
+                    ruta_archivo_original = str(fila_pdf['ruta_excel']) if 'ruta_excel' in fila_pdf and pd.notna(fila_pdf['ruta_excel']) else ''
+                    
+                    ruta_documento = None
+                    es_excel = False
+                    
+                    # 🟢 Si es Carga Masiva y guardamos el Excel original
+                    if es_masiva and os.path.exists(ruta_archivo_original):
+                        ruta_documento = ruta_archivo_original
+                        es_excel = True
+                    else:
+                        # 🔴 Si es Manual (o falta el Excel), generamos el PDF genérico
+                        ruta_documento = generar_pdf_firmado(ticket_id=fila_pdf['num_pedido'], kg_reales=fila_pdf['kg_reales'])
+                        
+                    if ruta_documento:
+                        st.session_state.pdf_tmp = ruta_documento
+                        st.session_state.pdf_num = fila_pdf['num_pedido']
+                        st.session_state.pdf_obra = fila_pdf['obra_codigo']
+                        st.session_state.pdf_solic = str(fila_pdf.get('quien_envia', '')).strip()
+                        st.session_state.pdf_kg = fila_pdf['kg_reales']
+                        st.session_state.es_excel = es_excel  # Guardamos la bandera para el botón
+                        st.success("✅ Documento preparado exitosamente.")
+                    else:
+                        st.error("❌ Error al preparar el documento.")
+
                 if 'pdf_tmp' in st.session_state and os.path.exists(st.session_state.pdf_tmp):
                     st.markdown("<br>", unsafe_allow_html=True)
                     
                     with open(st.session_state.pdf_tmp, "rb") as f:
-                        st.download_button("📥 1. Descargar PDF a mi PC", f, file_name=f"Pedido_Despacho_{st.session_state.pdf_num}.pdf", key="btn_dl_pdf", type="primary")
+                        if st.session_state.get("es_excel", False):
+                            # Muestra botón verde para descargar la Planilla Excel original intacta
+                            ext = os.path.splitext(st.session_state.pdf_tmp)[1]
+                            if not ext: ext = ".xlsm"
+                            st.download_button("📥 1. Descargar Planilla Original", f, file_name=f"Despacho_{st.session_state.pdf_num}{ext}", key="btn_dl_pdf", type="primary")
+                        else:
+                            # Muestra botón azul normal para descargar el PDF manual
+                            st.download_button("📄 1. Descargar PDF a mi PC", f, file_name=f"Despacho_{st.session_state.pdf_num}.pdf", key="btn_dl_pdf", type="primary")
                     
                     correo_dest = ""
                     try:
