@@ -1332,7 +1332,28 @@ with tabs_admin[0]:
     st.divider()
 
 # ====================================================================================
-# 👷 ESTADO HISTÓRICO DE ACTIVOS DEL TALLER (Tu bloque original con buscador de fotos)
+# 📱 MENÚ DE SELECCIÓN MANUAL (Para PC, supervisores o navegación sin QR)
+# ====================================================================================
+with st.expander("🚀 SELECCIONAR MÁQUINA MANUALMENTE (Para PC o sin QR)", expanded=False):
+    st.markdown("Selecciona el equipo que vas a inspeccionar para abrir su formulario:")
+    try:
+        conn_m = get_connection()
+        lista_maquinas = pd.read_sql("SELECT nombre FROM maquinas ORDER BY nombre", conn_m)['nombre'].tolist()
+        conn_m.close()
+    except Exception:
+        lista_maquinas = ["CILINDRADORA_1", "CNC_1_PLASMA", "COILINE", "PLEGADORA_1", "GUILLOTINA_1"]
+        
+    maquina_elegida = st.selectbox("Seleccione Máquina Activa:", ["-- Selecciona una máquina --"] + lista_maquinas, key="selector_manual_principal")
+    
+    if maquina_elegida != "-- Selecciona una máquina --":
+        if st.button("📝 Abrir Checklist Seleccionado", use_container_width=True, type="primary"):
+            st.session_state["maquina_seleccionada_qr"] = maquina_elegida
+            st.switch_page("pages/02_Mantencion.py")
+st.divider()
+
+
+# ====================================================================================
+# 👷 ESTADO HISTÓRICO DE ACTIVOS DEL TALLER (Con buscador de fotos y reparado)
 # ====================================================================================
 st.subheader("👷 Estado Histórico de Activos del Taller")
 st.caption("Selecciona un día para ver cómo estaban las máquinas en esa fecha exacta.")
@@ -1346,7 +1367,10 @@ try:
     
     if not df_maq.empty:
         inicio_semana_foto = fecha_foto - timedelta(days=fecha_foto.weekday())
-        df_insp['fecha_dt'] = pd.to_datetime(df_insp['fecha_hora'], format='mixed', errors='coerce')
+        
+        # 🔑 CORRECCIÓN CLAVE: Convertimos a naive datetime quitando el formato UTC de Supabase para evitar el colapso
+        df_insp['fecha_dt'] = pd.to_datetime(df_insp['fecha_hora'], format='mixed', errors='coerce').dt.tz_localize(None)
+        
         limite_tiempo = pd.to_datetime(fecha_foto) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1) 
         df_insp_foto = df_insp[df_insp['fecha_dt'] <= limite_tiempo].copy()
         
@@ -1385,7 +1409,6 @@ try:
             with cols[i % 4]:
                 with st.container(border=True):
                     
-                    # 📸 Buscador automático que repara rutas de la BD en la nube
                     final_path = None
                     if pd.notna(ruta_img) and str(ruta_img).strip() != "" and os.path.exists(str(ruta_img)):
                         final_path = str(ruta_img)
