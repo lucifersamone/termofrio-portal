@@ -671,7 +671,12 @@ with tab1:
                         0.0, float(m2_input), 'Pendiente', 'En Proceso', 'Normal', ruta_guardado, "", ""
                     ))
                     
-                    pid = c.fetchone()[0]
+                    # 🔑 CORRECCIÓN: Rescatamos el ID con doble seguro (Postgres Nativo + Adaptador)
+                    resultado = c.fetchone()
+                    if resultado is not None:
+                        pid = resultado[0]
+                    else:
+                        pid = c.lastrowid  # El adaptador guardó el ID en secreto aquí
                     
                     query_item = """INSERT INTO items_pedido 
                     (pedido_id, item_numero, descripcion, detalles, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio) 
