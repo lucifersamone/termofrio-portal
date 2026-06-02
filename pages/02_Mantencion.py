@@ -292,11 +292,18 @@ def calcular_estado_mes(fecha_prog, estado_db):
         return "🟠 ALERTA" if dias_habiles <= 10 else "🔵 En Plazo"
     return "📅 Prog."
 
-# --- CONTROL DE ACCESO ---
-try: param_maquina = st.query_params.get("maquina", None)
-except: param_maquina = None
+# --- CONTROL DE ACCESO (REPARADO PARA EL BYPASS DEL QR) ---
+try:
+    param_maquina = st.query_params.get("maquina", None)
+except Exception:
+    param_maquina = None
 
-estoy_logueado = 'logged_in' in st.session_state and st.session_state.logged_in
+# 🔑 PUENTE DE SEGURIDAD: Si la nube borró el QR al cambiar de página, lo rescatamos de la memoria de sesión
+if not param_maquina and "maquina_seleccionada_qr" in st.session_state:
+    param_maquina = st.session_state["maquina_seleccionada_qr"]
+
+# Validar estado de inicio de sesión tradicional o pase automático del taller
+estoy_logueado = ('logged_in' in st.session_state and st.session_state.logged_in) or st.session_state.get("logueado", False)
 modo_kiosco = True if param_maquina else (False if estoy_logueado else None)
 
 if modo_kiosco is None:
