@@ -1368,9 +1368,11 @@ try:
     if not df_maq.empty:
         inicio_semana_foto = fecha_foto - timedelta(days=fecha_foto.weekday())
         
-        # 🔑 CORRECCIÓN CLAVE: Convertimos a naive datetime quitando el formato UTC de Supabase para evitar el colapso
-        df_insp['fecha_dt'] = pd.to_datetime(df_insp['fecha_hora'], format='mixed', errors='coerce').dt.tz_localize(None)
-        
+        # 🔑 CORRECCIÓN CLAVE: Convertimos las fechas a planas quitando el formato UTC de Supabase para evitar el choque
+        df_insp['fecha_dt'] = pd.to_datetime(df_insp['fecha_hora'], format='mixed', errors='coerce')
+        if df_insp['fecha_dt'].dt.tz is not None:
+            df_insp['fecha_dt'] = df_insp['fecha_dt'].dt.tz_convert(None)
+            
         limite_tiempo = pd.to_datetime(fecha_foto) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1) 
         df_insp_foto = df_insp[df_insp['fecha_dt'] <= limite_tiempo].copy()
         
