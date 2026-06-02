@@ -1272,8 +1272,7 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                 if st.button("🚀 Procesar PDF Automático", key="btn_proc_pdf"):
                     fila_pdf = term[term['num_pedido'].astype(str) + " / " + term['obra_codigo']==sel_pdf].iloc[0]
                     
-                    with st.spinner("Preparando Documento Oficial de Despacho..."):
-                    # 🚦 SEMÁFORO ESTRICTO: No hay plan B para los Excel
+                    with st.spinner("Transformando Excel a PDF Oficial de Despacho..."):
                      fuente_bd = str(fila_pdf.get('fuente', '')).strip()
                     ruta_excel_bd = str(fila_pdf.get('ruta_excel', ''))
                     if ruta_excel_bd.lower() == 'nan': ruta_excel_bd = ""
@@ -1281,19 +1280,28 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                     
                     es_masiva = (fuente_bd == 'Carga Masiva')
                     ruta_documento = None
-                    es_excel = False
                     
-                    if es_masiva:
-                        # MODO EXCEL: Si o si tiene que entregar la planilla
-                        if ruta_excel_bd and os.path.exists(ruta_excel_bd):
-                            ruta_documento = ruta_excel_bd
-                            es_excel = True
-                            st.success("✅ Planilla Excel original encontrada en el servidor.")
-                        else:
-                            st.error("❌ MODO DIAGNÓSTICO: El sistema detectó que es un Carga Masiva, pero no encuentra el archivo físico en el servidor.")
-                            st.warning(f"Ruta que la base de datos está intentando leer: {ruta_excel_bd}")
+                    if es_masiva and ruta_excel_bd and os.path.exists(ruta_excel_bd):
+                        # 🪄 LA NUEVA BÓVEDA EN LA NUBE: Transformamos el Excel a PDF usando LibreOffice
+                        try:
+                            import subprocess
+                            dir_salida = os.path.dirname(ruta_excel_bd)
+                            # Comando que ordena a Linux convertir el archivo a PDF
+                            comando = ["libreoffice", "--headless", "--convert-to", "pdf", ruta_excel_bd, "--outdir", dir_salida]
+                            subprocess.run(comando, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                            
+                            nombre_base = os.path.splitext(os.path.basename(ruta_excel_bd))[0]
+                            ruta_pdf_generado = os.path.join(dir_salida, f"{nombre_base}.pdf")
+                            
+                            if os.path.exists(ruta_pdf_generado):
+                                ruta_documento = ruta_pdf_generado
+                                st.success("✅ Planilla transformada a PDF con éxito (Mantiene diseño y timbre).")
+                            else:
+                                st.error("❌ Falló la transformación del archivo a PDF.")
+                        except Exception as e:
+                            st.error(f"❌ Error en el motor de conversión: Asegúrese de tener 'libreoffice' en packages.txt. Detalle: {e}")
                     else:
-                        # MODO MANUAL: Generamos el PDF desde cero
+                        # MODO MANUAL: Generamos el PDF estándar desde cero
                         ruta_documento = generar_pdf_firmado(ticket_id=fila_pdf['num_pedido'], kg_reales=fila_pdf['kg_reales'])
                         if ruta_documento:
                             st.success("✅ PDF Oficial generado exitosamente.")
@@ -1305,21 +1313,12 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                         st.session_state.pdf_tmp = ruta_documento
                         st.session_state.pdf_num = fila_pdf['num_pedido']
                         st.session_state.pdf_obra = fila_pdf['obra_codigo']
-                        st.session_state.pdf_solic = str(fila_pdf.get('quien_envia', '')).strip()
-                        st.session_state.pdf_kg = fila_pdf['kg_reales']
-                        st.session_state.es_excel = es_excel
 
-                # Generación del botón correspondiente
+                # Generación del botón ÚNICO en formato PDF
                 if 'pdf_tmp' in st.session_state and os.path.exists(st.session_state.pdf_tmp):
                     st.markdown("<br>", unsafe_allow_html=True)
-                    
                     with open(st.session_state.pdf_tmp, "rb") as f:
-                        if st.session_state.get("es_excel", False):
-                            ext = os.path.splitext(st.session_state.pdf_tmp)[1]
-                            if not ext: ext = ".xlsm"
-                            st.download_button("📥 1. Descargar Planilla Excel Original", f, file_name=f"Despacho_{st.session_state.pdf_num}{ext}", key="btn_dl_excel", type="primary")
-                        else:
-                            st.download_button("📄 1. Descargar PDF a mi PC", f, file_name=f"Despacho_{st.session_state.pdf_num}.pdf", key="btn_dl_pdf", type="primary")
+                        st.download_button("📄 1. Descargar PDF a mi PC", f, file_name=f"Despacho_{st.session_state.pdf_num}.pdf", key="btn_dl_pdf", type="primary")
                     
                     correo_dest = ""
                     try:
