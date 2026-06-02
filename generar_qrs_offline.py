@@ -3,8 +3,7 @@ import qrcode
 import pandas as pd
 
 # 🔴 TU URL REAL DIRECTA A LA SUBPÁGINA DE MANTENCIÓN
-# Streamlit quita el prefijo '02_' y pasa todo a minúsculas en los enlaces públicos
-URL_DIRECTA_MANTENCION = "https://termofrio-app-7t8hkxxpr9cieryygrxyaw.streamlit.app/mantencion"
+URL_DIRECTA_MANTENCION = "https://termofrio-app-7t8hkxxpr9cieryygrxyaw.streamlit.app/Mantencion"
 CARPETA_QRS = "qrs_nuevos"
 
 if not os.path.exists(CARPETA_QRS):

@@ -317,6 +317,7 @@ modo_kiosco = True if param_maquina else (False if estoy_logueado else None)
 if modo_kiosco is None:
     st.warning("⚠️ Acceso Restringido. Inicie sesión en la pantalla Principal o escanee el QR.")
     st.stop()
+
 # ====================================================================================
 
 # ================= VISTA 1: MODO KIOSCO (CELULAR / QR) =================
