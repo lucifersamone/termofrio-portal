@@ -2,8 +2,9 @@ import os
 import qrcode
 import pandas as pd
 
-# 🔴 TU URL REAL Y OFICIAL EN INTERNET
-URL_PROD = "https://termofrio-app-7t8hkxxpr9cieryygrxyaw.streamlit.app"
+# 🔴 TU URL REAL DIRECTA A LA SUBPÁGINA DE MANTENCIÓN
+# Streamlit quita el prefijo '02_' y pasa todo a minúsculas en los enlaces públicos
+URL_DIRECTA_MANTENCION = "https://termofrio-app-7t8hkxxpr9cieryygrxyaw.streamlit.app/mantencion"
 CARPETA_QRS = "qrs_nuevos"
 
 if not os.path.exists(CARPETA_QRS):
@@ -31,16 +32,16 @@ except Exception as e:
         "GUILLOTINA_1", "RODONADORA_1", "PESTAÑERA_1", "TDF_1", "EMBALLETADORA_1"
     ]
 
-print("\n🚀 Fabricando códigos QR de acceso directo de taller...")
+print("\n🚀 Fabricando códigos QR DIRECTOS al Checklist (Sin intermediarios)...")
 for m in maquinas:
     m_clean = str(m).strip().upper().replace(" ", "_")
     
-    # Construcción limpia usando la URL que no rebota
-    url_final = f"{URL_PROD}/?maquina={m_clean}"
+    # 🔥 Construimos el enlace directo que el celular mantendrá intacto
+    url_final = f"{URL_DIRECTA_MANTENCION}?maquina={m_clean}"
     ruta_guardado = os.path.join(CARPETA_QRS, f"qr_{m_clean}.png")
     
     qr = qrcode.make(url_final)
     qr.save(ruta_guardado)
-    print(f"✅ QR Creado: {ruta_guardado} ➡️ {url_final}")
+    print(f"✅ QR Directo Creado: {ruta_guardado} ➡️ {url_final}")
 
-print("\n🎉 ¡Todos los QRs de las máquinas han sido generados exitosamente!")
+print("\n🎉 ¡Todos los QRs directos de taller han sido generados exitosamente!")

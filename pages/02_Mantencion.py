@@ -292,24 +292,32 @@ def calcular_estado_mes(fecha_prog, estado_db):
         return "🟠 ALERTA" if dias_habiles <= 10 else "🔵 En Plazo"
     return "📅 Prog."
 
-# --- CONTROL DE ACCESO (REPARADO PARA REDIRECCIÓN DE MEMORIA QR) ---
+# ====================================================================================
+# 🔒 CONTROL DE ACCESO INTEGRAL (REPARADO PARA ENTRADA DIRECTA DESDE QR)
+# ====================================================================================
+param_maquina = None
+
 try:
-    param_maquina = st.query_params.get("maquina", None)
+    # Buscamos el parámetro "maquina" en la URL, sin importar si viene en mayúsculas o minúsculas
+    for k, v in st.query_params.items():
+        if k.lower() == "maquina":
+            param_maquina = str(v).strip().upper()
+            break
 except Exception:
-    param_maquina = None
+    pass
 
-# 🔄 EL PUENTE DE MEMORIA: Si la URL se limpió en el viaje, rescatamos la máquina de la sesión
+# Fallback por si acaso quedara algo en la memoria de sesión
 if not param_maquina and "maquina_seleccionada_qr" in st.session_state:
-    param_maquina = st.session_state["maquina_seleccionada_qr"]
+    param_maquina = str(st.session_state["maquina_seleccionada_qr"]).strip().upper()
 
-# Evaluamos las credenciales inyectadas por el Guardián
+# Validamos si es un operario con QR (modo_kiosco) o un usuario logueado en PC
 estoy_logueado = ('logged_in' in st.session_state and st.session_state.logged_in) or st.session_state.get("logueado", False)
 modo_kiosco = True if param_maquina else (False if estoy_logueado else None)
 
 if modo_kiosco is None:
     st.warning("⚠️ Acceso Restringido. Inicie sesión en la pantalla Principal o escanee el QR.")
     st.stop()
-# ------------------------------------------------------------------
+# ====================================================================================
 
 # ================= VISTA 1: MODO KIOSCO (CELULAR / QR) =================
 if modo_kiosco:
