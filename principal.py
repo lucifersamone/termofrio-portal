@@ -24,65 +24,27 @@ st.set_page_config(
 )
 
 # ====================================================================================
-# 🚀 GUARDiÁN ULTRA-BLINDADO DE TRIPLE ENCLAVAMIENTO (REEMPLAZO DEFICITIVO)
+# 🚀 GUARDIÁN ULTRA-BLINDADO: ENTRADA DIRECTA DESDE QR SIN LOGIN
 # ====================================================================================
-param_maquina = None
-
-# 1. Buscador de parámetros inteligente (Soporta mayúsculas/minúsculas en el QR)
-try:
-    for k, v in st.query_params.items():
-        if k.lower() == "maquina":
-            param_maquina = v
-            break
-except Exception:
-    pass
-
-# Fallback: Lector Legacy (Por si la nube procesa el link como formato antiguo)
-if not param_maquina:
-    try:
-        legacy_params = st.experimental_get_query_params()
-        for k, v in legacy_params.items():
-            if k.lower() == "maquina":
-                param_maquina = v[0] if isinstance(v, list) else v
-                break
-    except Exception:
-        pass
-
-# 2. Si detectamos un operario escaneando una máquina, ejecutamos el Bypass inmediato
-if param_maquina:
-    # Inyectamos todas las credenciales de sesión para abrir los candados de las subpáginas
+if "maquina" in st.query_params:
+    # 1. Activamos todas las variables de sesión idénticas a un inicio de sesión exitoso
     st.session_state["rol"] = "operario"
     st.session_state["usuario"] = "Operario Taller"
     st.session_state["autenticado"] = True
     st.session_state["logueado"] = True
+    st.session_state["logged_in"] = True  # 🔑 Llave exacta que pide la subpágina
     
-    # Guardamos la máquina limpia y en mayúsculas en todas las variables usadas por el sistema
-    maquina_limpia = str(param_maquina).strip().upper()
-    st.session_state["maquina_seleccionada_qr"] = maquina_limpia
-    st.session_state["maquina"] = maquina_limpia
-
-    # 3. Probador de rutas indexadas para Linux (Prueba combinaciones hasta que una abra)
-    rutas_a_probar = [
-        "pages/02_Mantencion.py",
-        "pages/02_mantencion.py",
-        "02_Mantencion.py",
-        "02_mantencion.py"
-    ]
+    # 2. Capturamos la máquina seleccionada limpia y en mayúsculas
+    maquina_detectada = str(st.query_params["maquina"]).strip().upper()
+    st.session_state["maquina_seleccionada_qr"] = maquina_detectada
+    st.session_state["maquina"] = maquina_detectada
     
-    redireccion_exitosa = False
-    for ruta in rutas_a_probar:
-        try:
-            st.switch_page(ruta)
-            redireccion_exitosa = True
-            st.stop()
-        except Exception:
-            continue
-
-    # 🚨 Alarma de diagnóstico: Si el código llega aquí, es porque el archivo se llama distinto en GitHub
-    if not redireccion_exitosa:
-        st.error(f"⚠️ El Guardián detectó la máquina '{maquina_limpia}', pero no pudo encontrar el archivo en el servidor.")
-        st.info(f"Por favor Lucio, verifica cómo se escribe el archivo en tu carpeta pages/. Rutas intentadas: {rutas_a_probar}")
-        st.stop()
+    # 3. Forzamos el salto inmediato al checklist de mantención
+    try:
+        st.switch_page("pages/02_Mantencion.py")
+    except Exception:
+        st.switch_page("02_Mantencion.py")
+    st.stop()
 # ====================================================================================
 
 # Inicializar estados de sesión básicos para que no fallen las pestañas
