@@ -348,60 +348,46 @@ if modo_kiosco:
         else: st.info("📅 **PRÓX. PREVENTIVO EXTERNO:** \n\nNo programada en matriz")
     st.markdown("---")
 
-    # 📸 CORE FIX ENRIQUECIDO: VISOR DE FOTO ULTRA-SEGURO (EVITA DESCALCES DE ESPACIOS/GUIONES)
+    # ====================================================================================
+    # 📸 VISOR DE FOTO BLINDADO (INDEPENDIENTE DE LA BASE DE DATOS)
+    # ====================================================================================
     ruta_foto_final = None
     
-    # Determinamos la ruta absoluta real hacia la carpeta img_maquinas en la raíz del proyecto
     dir_actual = os.path.dirname(os.path.abspath(__file__))
     root_dir = os.path.dirname(dir_actual) if "pages" in dir_actual.lower() else dir_actual
     carpeta_img = os.path.join(root_dir, "img_maquinas")
 
-    # Función interna para normalizar nombres y evitar fallas por formatos de escritura
     def normalizar(t):
         return str(t).upper().replace(" ", "_").replace("-", "_").strip()
 
-    if not foto.empty:
-        nombre_maquina = str(foto.iloc[0].get('nombre', '')).strip()
-        ruta_db = str(foto.iloc[0].get('foto_path', '')).strip()
-        if ruta_db.lower() == 'nan': ruta_db = ""
-        
-        # 1. Intentar con la ruta exacta de la base de datos
-        if ruta_db:
-            if os.path.exists(ruta_db):
-                ruta_foto_final = ruta_db
-            else:
-                nombre_archivo = os.path.basename(ruta_db)
-                ruta_alternativa = os.path.join(carpeta_img, nombre_archivo)
-                if os.path.exists(ruta_alternativa):
-                    ruta_foto_final = ruta_alternativa
+    # 1. Búsqueda forzada y directa en la carpeta física
+    if os.path.exists(carpeta_img):
+        id_buscado = normalizar(param_maquina)
+        for archivo in os.listdir(carpeta_img):
+            nom, ext = os.path.splitext(archivo)
+            if normalizar(nom) == id_buscado:
+                ruta_foto_final = os.path.join(carpeta_img, archivo)
+                break
 
-        # 2. Buscar por ID de la máquina (ej: PLEGADORA_1) ignorando diferencias de guiones/espacios
-        if not ruta_foto_final and os.path.exists(carpeta_img):
-            id_buscado = normalizar(param_maquina)
-            for archivo in os.listdir(carpeta_img):
-                nom, ext = os.path.splitext(archivo)
-                if normalizar(nom) == id_buscado:
-                    ruta_foto_final = os.path.join(carpeta_img, archivo)
-                    break
-
-        # 3. Buscar por Nombre de la máquina (ej: Plegadora 1) como segundo recurso de seguridad
-        if not ruta_foto_final and nombre_maquina and os.path.exists(carpeta_img):
-            nombre_buscado = normalizar(nombre_maquina)
-            for archivo in os.listdir(carpeta_img):
-                nom, ext = os.path.splitext(archivo)
-                if normalizar(nom) == nombre_buscado:
-                    ruta_foto_final = os.path.join(carpeta_img, archivo)
-                    break
-
-    # Despliegue de la imagen en el celular del operador
+    # 2. Despliegue de la imagen o del Radar de Diagnóstico
     if ruta_foto_final and os.path.exists(ruta_foto_final):
         st.image(ruta_foto_final, caption=f"Confirmación Visual: {param_maquina}", use_container_width=True)
     else:
-        st.info(f"📷 (No se visualiza foto para {param_maquina} en el servidor; verifique el nombre del archivo)")
+        st.warning(f"📷 No se encontró la foto para {param_maquina}.")
+        # 🚨 RADAR DE DIAGNÓSTICO: Te dirá exactamente por qué falló en la nube
+        with st.expander("🔍 Diagnóstico del Servidor (Tócalo para abrir)"):
+            st.write(f"**El código está buscando la máquina:** `{param_maquina}`")
+            st.write(f"**En la ruta de la nube:** `{carpeta_img}`")
+            if os.path.exists(carpeta_img):
+                st.success("✅ La carpeta 'img_maquinas' SÍ existe en la nube.")
+                st.write("**Estos son los archivos exactos que el servidor logra ver adentro:**")
+                st.write(os.listdir(carpeta_img))
+            else:
+                st.error("❌ La carpeta 'img_maquinas' NO EXISTE en el servidor de la nube. Lo más probable es que no se haya subido a GitHub correctamente.")
 
     st.divider()
 
-    # 👷 SELECCIÓN DE TIPO DE USUARIO (RECUPERADO)
+    # 👷 SELECCIÓN DE TIPO DE USUARIO
     tipo_usuario = st.radio("¿Qué tipo de mantenimiento realizará?", ["👷 Personal Interno (Checklist Semanal)", "🔧 Personal Externo (Mantenimiento Técnico)"])
     st.divider()
 
