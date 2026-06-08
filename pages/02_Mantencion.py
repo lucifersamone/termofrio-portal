@@ -348,37 +348,63 @@ if modo_kiosco:
         else: st.info("📅 **PRÓX. PREVENTIVO EXTERNO:** \n\nNo programada en matriz")
     st.markdown("---")
 
-    # 📸 CORE FIX MEJORADO: VISOR DE FOTO DE LA MÁQUINA
+    # 📸 CORE FIX ENRIQUECIDO: VISOR DE FOTO ULTRA-SEGURO (EVITA DESCALCES DE ESPACIOS/GUIONES)
     ruta_foto_final = None
+    
+    # Determinamos la ruta absoluta real hacia la carpeta img_maquinas en la raíz del proyecto
+    dir_actual = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.dirname(dir_actual) if "pages" in dir_actual.lower() else dir_actual
+    carpeta_img = os.path.join(root_dir, "img_maquinas")
 
-    # 1. Intentamos leer la ruta de la base de datos primero
-    if not foto.empty and pd.notna(foto.iloc[0]['foto_path']) and str(foto.iloc[0]['foto_path']).strip() != "":
-        ruta_foto_db = str(foto.iloc[0]['foto_path']).strip()
-        if os.path.exists(ruta_foto_db):
-            ruta_foto_final = ruta_foto_db
-        else:
-            nombre_archivo = os.path.basename(ruta_foto_db)
-            ruta_inteligente = os.path.join(CARPETA_FOTOS, nombre_archivo)
-            if os.path.exists(ruta_inteligente):
-                ruta_foto_final = ruta_inteligente
+    # Función interna para normalizar nombres y evitar fallas por formatos de escritura
+    def normalizar(t):
+        return str(t).upper().replace(" ", "_").replace("-", "_").strip()
 
-    # 2. Si la DB estaba vacía, buscamos a la fuerza en la carpeta local
-    if not ruta_foto_final and os.path.exists(CARPETA_FOTOS):
-        id_buscado = str(param_maquina).upper().strip()
-        for archivo_disco in os.listdir(CARPETA_FOTOS):
-            nombre_disco, ext = os.path.splitext(archivo_disco)
-            if nombre_disco.upper().strip() == id_buscado:
-                ruta_foto_final = os.path.join(CARPETA_FOTOS, archivo_disco)
-                break
+    if not foto.empty:
+        nombre_maquina = str(foto.iloc[0].get('nombre', '')).strip()
+        ruta_db = str(foto.iloc[0].get('foto_path', '')).strip()
+        if ruta_db.lower() == 'nan': ruta_db = ""
+        
+        # 1. Intentar con la ruta exacta de la base de datos
+        if ruta_db:
+            if os.path.exists(ruta_db):
+                ruta_foto_final = ruta_db
+            else:
+                nombre_archivo = os.path.basename(ruta_db)
+                ruta_alternativa = os.path.join(carpeta_img, nombre_archivo)
+                if os.path.exists(ruta_alternativa):
+                    ruta_foto_final = ruta_alternativa
 
-    # 3. Imprimimos la foto en pantalla
-    if ruta_foto_final:
+        # 2. Buscar por ID de la máquina (ej: PLEGADORA_1) ignorando diferencias de guiones/espacios
+        if not ruta_foto_final and os.path.exists(carpeta_img):
+            id_buscado = normalizar(param_maquina)
+            for archivo in os.listdir(carpeta_img):
+                nom, ext = os.path.splitext(archivo)
+                if normalizar(nom) == id_buscado:
+                    ruta_foto_final = os.path.join(carpeta_img, archivo)
+                    break
+
+        # 3. Buscar por Nombre de la máquina (ej: Plegadora 1) como segundo recurso de seguridad
+        if not ruta_foto_final and nombre_maquina and os.path.exists(carpeta_img):
+            nombre_buscado = normalizar(nombre_maquina)
+            for archivo in os.listdir(carpeta_img):
+                nom, ext = os.path.splitext(archivo)
+                if normalizar(nom) == nombre_buscado:
+                    ruta_foto_final = os.path.join(carpeta_img, archivo)
+                    break
+
+    # Despliegue de la imagen en el celular del operador
+    if ruta_foto_final and os.path.exists(ruta_foto_final):
         st.image(ruta_foto_final, caption=f"Confirmación Visual: {param_maquina}", use_container_width=True)
     else:
-        st.info(f"📷 (No hay fotografía guardada en el sistema para {param_maquina})")
+        st.info(f"📷 (No se visualiza foto para {param_maquina} en el servidor; verifique el nombre del archivo)")
+
+    st.divider()
+
+    # 👷 SELECCIÓN DE TIPO DE USUARIO (RECUPERADO)
     tipo_usuario = st.radio("¿Qué tipo de mantenimiento realizará?", ["👷 Personal Interno (Checklist Semanal)", "🔧 Personal Externo (Mantenimiento Técnico)"])
     st.divider()
-    
+
     # --- FLUJO 1: PERSONAL INTERNO ---
     if "Interno" in tipo_usuario:
         registro_semana = obtener_estado_semana(param_maquina)
