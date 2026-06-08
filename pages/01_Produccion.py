@@ -1313,6 +1313,7 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                         st.session_state.pdf_tmp = ruta_documento
                         st.session_state.pdf_num = fila_pdf['num_pedido']
                         st.session_state.pdf_obra = fila_pdf['obra_codigo']
+                        st.session_state.pdf_kg = fila_pdf.get('kg_reales', 0)  # 🔑 ESTA ES LA LÍNEA RECUPERADA
 
                 # Generación del botón ÚNICO en formato PDF
                 if 'pdf_tmp' in st.session_state and os.path.exists(st.session_state.pdf_tmp):
