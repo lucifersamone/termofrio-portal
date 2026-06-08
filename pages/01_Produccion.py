@@ -1316,32 +1316,61 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                         st.session_state.pdf_kg = fila_pdf.get('kg_reales', 0)  # 🔑 ESTA ES LA LÍNEA RECUPERADA
 
                 # Generación del botón ÚNICO en formato PDF
+                # =========================================================
+                # 📥 MOSTRAR BOTONES DE DESCARGA Y CORREO (FUERA DEL SPINNER)
+                # =========================================================
                 if 'pdf_tmp' in st.session_state and os.path.exists(st.session_state.pdf_tmp):
                     st.markdown("<br>", unsafe_allow_html=True)
-                    with open(st.session_state.pdf_tmp, "rb") as f:
-                        st.download_button("📄 1. Descargar PDF a mi PC", f, file_name=f"Despacho_{st.session_state.pdf_num}.pdf", key="btn_dl_pdf", type="primary")
                     
-                    correo_dest = ""
-                    try:
-                        conn_c = get_connection()
-                        df_c = pd.read_sql(f"SELECT correo FROM directorio_solicitantes WHERE nombre='{st.session_state.pdf_solic}'", conn_c)
-                        conn_c.close()
-                        if not df_c.empty: correo_dest = str(df_c.iloc[0]['correo']).strip()
-                    except: pass
+                    # 1. SECCIÓN DE DESCARGA
+                    with open(st.session_state.pdf_tmp, "rb") as f:
+                        if st.session_state.get("es_excel", False):
+                            ext = os.path.splitext(st.session_state.pdf_tmp)[1]
+                            if not ext: ext = ".xlsm"
+                            st.download_button("📥 1. Descargar Planilla Original", f, file_name=f"Despacho_{st.session_state.get('pdf_num', '')}{ext}", key="btn_dl_excel", type="primary")
+                        else:
+                            st.download_button("📄 1. Descargar PDF Oficial", f, file_name=f"Despacho_{st.session_state.get('pdf_num', '')}.pdf", key="btn_dl_pdf", type="primary")
+                    
+                    # 📬 2. SECCIÓN DE CORREO AUTOMATIZADO
+                    st.markdown("---")
+                    st.subheader("📬 2. Enviar por Correo Automatizado")
+                    
+                    correo_destino = ""
+                    quien_envia = str(st.session_state.get('pdf_solic', '')).strip()
+                    
+                    # Buscamos el correo en la base de datos de Termofrio (Igual que en el Paso 1)
+                    if quien_envia and quien_envia != "nan":
+                        try:
+                            conn_c = get_connection()
+                            df_correo = pd.read_sql(f"SELECT correo FROM directorio_solicitantes WHERE nombre='{quien_envia}'", conn_c)
+                            conn_c.close()
+                            if not df_correo.empty: 
+                                correo_destino = str(df_correo.iloc[0]['correo']).strip()
+                        except:
+                            pass
+                            
+                    if correo_destino:
+                        st.success(f"✅ Se asoció el correo de: {quien_envia} ({correo_destino})")
+                    else:
+                        st.warning(f"⚠️ No se encontró el correo de '{quien_envia}' en el directorio de solicitantes.")
 
-                    html_despacho = f"""Estimados,\n
-Junto con saludar, informamos que su Pedido N° {st.session_state.pdf_num} (Obra: {st.session_state.pdf_obra}) se encuentra terminado y listo para retiro/despacho.\n
+                    # Armamos el Asunto y el Cuerpo del Correo
+                    asunto_correo = f"Aviso de Despacho Listo - Pedido N° {st.session_state.get('pdf_num', '')} - Obra {st.session_state.get('pdf_obra', '')}"
+                    
+                    texto_correo = f"""Estimados,\n
+Junto con saludar, informamos que su Pedido N° {st.session_state.get('pdf_num', '')} (Obra: {st.session_state.get('pdf_obra', '')}) se encuentra terminado y listo para retiro/despacho.\n
 ⚖️ Peso Total Fabricado: {st.session_state.get('pdf_kg', 0)} Kg.\n
-Favor recordar adjuntar el documento PDF oficial descargado de la plataforma a este correo para el respaldo.\n
+Favor recordar adjuntar el documento oficial descargado de la plataforma a este correo para el respaldo.\n
 Quedamos a su disposición para coordinar la entrega.\n\nSaludos cordiales,\nDepartamento de Producción - Termofrio SPA"""
                     
-                    st.info("⚠️ Descarga el PDF primero usando el botón de arriba, y luego adjúntalo manualmente en tu correo.")
+                    # Transformamos el texto en un enlace de correo y dibujamos el botón (Lo que faltaba)
+                    import urllib.parse
+                    subj_enc = urllib.parse.quote(asunto_correo)
+                    body_enc = urllib.parse.quote(texto_correo)
+                    mailto_url = f"mailto:{correo_destino}?subject={subj_enc}&body={body_enc}"
                     
-                    if correo_dest:
-                        subj_enc = urllib.parse.quote(f"Pedido Listo para Retiro/Despacho - N° {st.session_state.pdf_num} - Obra {st.session_state.pdf_obra}")
-                        body_enc = urllib.parse.quote(html_despacho)
-                        mailto_url = f"mailto:{correo_dest}?subject={subj_enc}&body={body_enc}"
-                        st.link_button("📧 2. Abrir Borrador de Correo", mailto_url)
+                    st.link_button("📧 2. Abrir Borrador de Correo", mailto_url, type="primary")
+                    st.info("⚠️ Descarga el documento en el botón de arriba primero, y luego adjúntalo manualmente en la ventana de correo que se abrirá.")
 
         st.divider()
         st.subheader("🚚 PASO 4: Registrar Salida a Terreno (Despacho)")
