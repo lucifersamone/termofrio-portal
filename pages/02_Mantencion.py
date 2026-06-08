@@ -348,21 +348,37 @@ if modo_kiosco:
         else: st.info("📅 **PRÓX. PREVENTIVO EXTERNO:** \n\nNo programada en matriz")
     st.markdown("---")
 
-    # 📸 CORE FIX: BUSCADOR INTELIGENTE DE FOTOS (FALLBACK)
-    if not foto.empty and foto.iloc[0]['foto_path']:
-        ruta_foto_db = foto.iloc[0]['foto_path']
+    # 📸 CORE FIX MEJORADO: VISOR DE FOTO DE LA MÁQUINA
+    ruta_foto_final = None
+
+    # 1. Intentamos leer la ruta de la base de datos primero
+    if not foto.empty and pd.notna(foto.iloc[0]['foto_path']) and str(foto.iloc[0]['foto_path']).strip() != "":
+        ruta_foto_db = str(foto.iloc[0]['foto_path']).strip()
         if os.path.exists(ruta_foto_db):
-            st.image(ruta_foto_db, use_container_width=True)
+            ruta_foto_final = ruta_foto_db
         else:
-            # Si falla la ruta larga de la DB, busca solo el nombre en la carpeta de GitHub
             nombre_archivo = os.path.basename(ruta_foto_db)
             ruta_inteligente = os.path.join(CARPETA_FOTOS, nombre_archivo)
             if os.path.exists(ruta_inteligente):
-                st.image(ruta_inteligente, use_container_width=True)
+                ruta_foto_final = ruta_inteligente
 
+    # 2. Si la DB estaba vacía, buscamos a la fuerza en la carpeta local
+    if not ruta_foto_final and os.path.exists(CARPETA_FOTOS):
+        id_buscado = str(param_maquina).upper().strip()
+        for archivo_disco in os.listdir(CARPETA_FOTOS):
+            nombre_disco, ext = os.path.splitext(archivo_disco)
+            if nombre_disco.upper().strip() == id_buscado:
+                ruta_foto_final = os.path.join(CARPETA_FOTOS, archivo_disco)
+                break
+
+    # 3. Imprimimos la foto en pantalla
+    if ruta_foto_final:
+        st.image(ruta_foto_final, caption=f"Confirmación Visual: {param_maquina}", use_container_width=True)
+    else:
+        st.info(f"📷 (No hay fotografía guardada en el sistema para {param_maquina})")
     tipo_usuario = st.radio("¿Qué tipo de mantenimiento realizará?", ["👷 Personal Interno (Checklist Semanal)", "🔧 Personal Externo (Mantenimiento Técnico)"])
     st.divider()
-
+    
     # --- FLUJO 1: PERSONAL INTERNO ---
     if "Interno" in tipo_usuario:
         registro_semana = obtener_estado_semana(param_maquina)
