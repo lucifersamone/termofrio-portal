@@ -1331,7 +1331,7 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
 
                     html_despacho = f"""Estimados,\n
 Junto con saludar, informamos que su Pedido N° {st.session_state.pdf_num} (Obra: {st.session_state.pdf_obra}) se encuentra terminado y listo para retiro/despacho.\n
-⚖️ Peso Total Fabricado: {st.session_state.pdf_kg} Kg.\n
+⚖️ Peso Total Fabricado: {st.session_state.get('pdf_kg', 0)} Kg.\n
 Favor recordar adjuntar el documento PDF oficial descargado de la plataforma a este correo para el respaldo.\n
 Quedamos a su disposición para coordinar la entrega.\n\nSaludos cordiales,\nDepartamento de Producción - Termofrio SPA"""
                     
