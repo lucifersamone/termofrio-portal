@@ -1338,7 +1338,6 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                     correo_destino = ""
                     quien_envia = str(st.session_state.get('pdf_solic', '')).strip()
                     
-                    # Buscamos el correo en la base de datos de Termofrio (Igual que en el Paso 1)
                     if quien_envia and quien_envia != "nan":
                         try:
                             conn_c = get_connection()
@@ -1352,18 +1351,12 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                     if correo_destino:
                         st.success(f"✅ Se asoció el correo de: {quien_envia} ({correo_destino})")
                     else:
-                        st.warning(f"⚠️ No se encontró el correo de '{quien_envia}' en el directorio de solicitantes.")
+                        st.warning(f"⚠️ No se encontró el correo de '{quien_envia}'.")
 
-                    # Armamos el Asunto y el Cuerpo del Correo
                     asunto_correo = f"Aviso de Despacho Listo - Pedido N° {st.session_state.get('pdf_num', '')} - Obra {st.session_state.get('pdf_obra', '')}"
                     
-                    texto_correo = f"""Estimados,\n
-Junto con saludar, informamos que su Pedido N° {st.session_state.get('pdf_num', '')} (Obra: {st.session_state.get('pdf_obra', '')}) se encuentra terminado y listo para retiro/despacho.\n
-⚖️ Peso Total Fabricado: {st.session_state.get('pdf_kg', 0)} Kg.\n
-Favor recordar adjuntar el documento oficial descargado de la plataforma a este correo para el respaldo.\n
-Quedamos a su disposición para coordinar la entrega.\n\nSaludos cordiales,\nDepartamento de Producción - Termofrio SPA"""
+                    texto_correo = f"Estimados,\n\nJunto con saludar, informamos que su Pedido N° {st.session_state.get('pdf_num', '')} (Obra: {st.session_state.get('pdf_obra', '')}) se encuentra terminado y listo para retiro/despacho.\n\n⚖️ Peso Total Fabricado: {st.session_state.get('pdf_kg', 0)} Kg.\n\nFavor recordar adjuntar el documento oficial descargado de la plataforma a este correo para el respaldo.\n\nQuedamos a su disposición para coordinar la entrega.\n\nSaludos cordiales,\nDepartamento de Producción - Termofrio SPA"
                     
-                    # Transformamos el texto en un enlace de correo y dibujamos el botón (Lo que faltaba)
                     import urllib.parse
                     subj_enc = urllib.parse.quote(asunto_correo)
                     body_enc = urllib.parse.quote(texto_correo)
@@ -1371,8 +1364,6 @@ Quedamos a su disposición para coordinar la entrega.\n\nSaludos cordiales,\nDep
                     
                     st.link_button("📧 2. Abrir Borrador de Correo", mailto_url, type="primary")
                     st.info("⚠️ Descarga el documento en el botón de arriba primero, y luego adjúntalo manualmente en la ventana de correo que se abrirá.")
-
-        st.divider()
         st.subheader("🚚 PASO 4: Registrar Salida a Terreno (Despacho)")
         st.caption("Marca los pedidos que ya fueron retirados físicamente del taller para descontarlos de la tarjeta de Listos en Taller.")
         
