@@ -1249,18 +1249,66 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
 
         c1, c2 = st.columns(2)
         with c1:
-            st.subheader("✅ PASO 2: Cerrar Pedido (Taller)")
-            st.caption("Ingresa los Kilos Reales de lo fabricado para finalizarlo.")
+            st.subheader("✅ PASO 2: Avance y Cierre (Taller)")
+            st.caption("Registra salidas parciales o finaliza la orden por completo.")
+            
             pend = dfp[dfp['estado']=='Pendiente']
             if not pend.empty:
-                sel_cierre = st.selectbox("Seleccionar Pedido a Cerrar:", pend['num_pedido'].astype(str) + " / " + pend['obra_codigo'])
-                id_c = pend[pend['num_pedido'].astype(str) + " / " + pend['obra_codigo']==sel_cierre].iloc[0]['id']
-                peso_r = st.number_input("Peso Real Fabricado (Kg)", min_value=0.0, format="%.2f")
-                fecha_c = st.date_input("Fecha Término", value=datetime.now())
-                if st.button("Confirmar Cierre de Pedido", key="btn_cierre", type="primary"):
-                    conn=get_connection(); c=conn.cursor()
-                    c.execute("UPDATE pedidos SET estado='Terminado', fecha_termino=%s, kg_reales=%s WHERE id=%s", (fecha_c, peso_r, int(id_c)))
-                    conn.commit(); conn.close(); st.success("Cerrado y guardado en historial."); st.rerun()
+                sel_pedido = st.selectbox("Seleccionar Pedido Activo:", pend['num_pedido'].astype(str) + " / " + pend['obra_codigo'], key="sel_avance")
+                id_c = pend[pend['num_pedido'].astype(str) + " / " + pend['obra_codigo']==sel_pedido].iloc[0]['id']
+                
+                # ⚙️ CREACIÓN SILENCIOSA DE TABLA (Se ejecuta sola si no existe)
+                conn = get_connection(); c = conn.cursor()
+                try:
+                    c.execute('''CREATE TABLE IF NOT EXISTS entregas_parciales (id SERIAL PRIMARY KEY, pedido_id INTEGER, fecha TIMESTAMP, kilos REAL, comentario TEXT)''')
+                    conn.commit()
+                except: pass
+                conn.close()
+
+                # 🗂️ PESTAÑAS PARA SEPARAR EL "GOTEO" DEL "CIERRE"
+                tab_parcial, tab_cierre = st.tabs(["📦 Registrar Parcialidad", "🛑 Cierre Definitivo"])
+                
+                with tab_parcial:
+                    st.info("Anota los kilos y piezas que se van en este camión.")
+                    with st.form("form_parcial"):
+                        kilos_parcial = st.number_input("Kilos de esta entrega (Kg)", min_value=0.0, format="%.2f")
+                        comentario_parcial = st.text_input("Detalle de piezas (Ej: 50 ductos rectos, 2 curvas)")
+                        
+                        if st.form_submit_button("Guardar Salida Parcial"):
+                            if kilos_parcial > 0 and comentario_parcial:
+                                conn=get_connection(); c=conn.cursor()
+                                fecha_ahora = datetime.now()
+                                c.execute("INSERT INTO entregas_parciales (pedido_id, fecha, kilos, comentario) VALUES (%s, %s, %s, %s)", (int(id_c), fecha_ahora, kilos_parcial, comentario_parcial.strip()))
+                                conn.commit(); conn.close()
+                                st.success("✅ ¡Entrega parcial guardada!")
+                                st.rerun()
+                            else:
+                                st.warning("⚠️ Ingresa los kilos y un comentario para poder registrar.")
+                    
+                    # 📊 TABLA DE HISTORIAL DE ENTREGAS
+                    conn=get_connection()
+                    try:
+                        df_historial = pd.read_sql(f"SELECT fecha, kilos, comentario FROM entregas_parciales WHERE pedido_id={int(id_c)} ORDER BY fecha DESC", conn)
+                        if not df_historial.empty:
+                            st.markdown("##### 📜 Historial de envíos de esta OT")
+                            df_historial['fecha'] = pd.to_datetime(df_historial['fecha']).dt.strftime('%d-%m-%Y %H:%M')
+                            st.dataframe(df_historial, hide_index=True, use_container_width=True)
+                            
+                            kilos_acumulados = df_historial['kilos'].sum()
+                            st.success(f"⚖️ **Total Acumulado Despachado:** {kilos_acumulados:.1f} Kg")
+                    except: pass
+                    conn.close()
+
+                with tab_cierre:
+                    st.warning("⚠️ Usa esto solo cuando ya no quede ninguna pieza por fabricar de esta orden.")
+                    peso_r = st.number_input("Peso Total Final (Suma total de todas las entregas)", min_value=0.0, format="%.2f")
+                    fecha_c = st.date_input("Fecha Término", value=datetime.now())
+                    if st.button("Confirmar Cierre Final", key="btn_cierre", type="primary"):
+                        conn=get_connection(); c=conn.cursor()
+                        c.execute("UPDATE pedidos SET estado='Terminado', fecha_termino=%s, kg_reales=%s WHERE id=%s", (fecha_c, peso_r, int(id_c)))
+                        conn.commit(); conn.close(); st.success("Cerrado y guardado en historial."); st.rerun()
+            else:
+                st.info("No hay pedidos pendientes en taller.")
 
         with c2:
             st.subheader("📄 PASO 3: Generar PDF Final de Despacho")
