@@ -1374,6 +1374,7 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                     st.markdown(boton_html, unsafe_allow_html=True)
                     
                     st.info("⚠️ Descarga el documento en el botón de arriba primero, y luego adjúntalo manualmente en la ventana de correo que se abrirá.")
+                    
         st.subheader("🚚 PASO 4: Registrar Salida a Terreno (Despacho)")
         st.caption("Marca los pedidos que ya fueron retirados físicamente del taller para descontarlos de la tarjeta de Listos en Taller.")
         
