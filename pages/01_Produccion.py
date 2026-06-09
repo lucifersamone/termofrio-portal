@@ -1322,18 +1322,23 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                 if 'pdf_tmp' in st.session_state and os.path.exists(st.session_state.pdf_tmp):
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    # 1. SECCIÓN DE DESCARGA
+                    # 🏷️ ARMADO DEL NOMBRE DINÁMICO (Ej: Pedido OT-85 TF-13655 SANTIAGO...)
+                    num_ped = st.session_state.get('pdf_num', '')
+                    obra_ped = str(st.session_state.get('pdf_obra', '')).replace('/', '-').replace('\\', '-')
+                    nombre_archivo_final = f"Pedido OT-{num_ped} {obra_ped}"
+
+                    # 📥 SECCIÓN DE DESCARGA (Sin números confusos)
                     with open(st.session_state.pdf_tmp, "rb") as f:
                         if st.session_state.get("es_excel", False):
                             ext = os.path.splitext(st.session_state.pdf_tmp)[1]
                             if not ext: ext = ".xlsm"
-                            st.download_button("📥 1. Descargar Planilla Original", f, file_name=f"Despacho_{st.session_state.get('pdf_num', '')}{ext}", key="btn_dl_excel", type="primary")
+                            st.download_button("📥 Descargar Planilla Original", f, file_name=f"{nombre_archivo_final}{ext}", key="btn_dl_excel", type="primary")
                         else:
-                            st.download_button("📄 1. Descargar PDF Oficial", f, file_name=f"Despacho_{st.session_state.get('pdf_num', '')}.pdf", key="btn_dl_pdf", type="primary")
+                            st.download_button("📄 Descargar PDF Oficial", f, file_name=f"{nombre_archivo_final}.pdf", key="btn_dl_pdf", type="primary")
                     
-                    # 📬 2. SECCIÓN DE CORREO AUTOMATIZADO
+                    # 📬 SECCIÓN DE CORREO (Renombrada para no chocar con los PASOS)
                     st.markdown("---")
-                    st.subheader("📬 2. Enviar por Correo Automatizado")
+                    st.markdown("#### 📬 Enviar por Correo")
                     
                     correo_destino = ""
                     quien_envia = str(st.session_state.get('pdf_solic', '')).strip()
@@ -1353,20 +1358,20 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                     else:
                         st.warning(f"⚠️ No se encontró el correo de '{quien_envia}'.")
 
-                    asunto_correo = f"Aviso de Despacho Listo - Pedido N° {st.session_state.get('pdf_num', '')} - Obra {st.session_state.get('pdf_obra', '')}"
+                    asunto_correo = f"Aviso de Despacho Listo - {nombre_archivo_final}"
                     
-                    texto_correo = f"Estimados,\n\nJunto con saludar, informamos que su Pedido N° {st.session_state.get('pdf_num', '')} (Obra: {st.session_state.get('pdf_obra', '')}) se encuentra terminado y listo para retiro/despacho.\n\n⚖️ Peso Total Fabricado: {st.session_state.get('pdf_kg', 0)} Kg.\n\nFavor recordar adjuntar el documento oficial descargado de la plataforma a este correo para el respaldo.\n\nQuedamos a su disposición para coordinar la entrega.\n\nSaludos cordiales,\nDepartamento de Producción - Termofrio SPA"
+                    texto_correo = f"Estimados,\n\nJunto con saludar, informamos que su Pedido N° {num_ped} (Obra: {obra_ped}) se encuentra terminado y listo para retiro/despacho.\n\n⚖️ Peso Total Fabricado: {st.session_state.get('pdf_kg', 0)} Kg.\n\nFavor recordar adjuntar el documento oficial descargado de la plataforma a este correo para el respaldo.\n\nQuedamos a su disposición para coordinar la entrega.\n\nSaludos cordiales,\nDepartamento de Producción - Termofrio SPA"
                     
                     import urllib.parse
                     subj_enc = urllib.parse.quote(asunto_correo)
                     body_enc = urllib.parse.quote(texto_correo)
                     mailto_url = f"mailto:{correo_destino}?subject={subj_enc}&body={body_enc}"
                     
-                    # 🚀 EL BOTÓN HTML INDESTRUCTIBLE (Bypassea el bloqueo de la nube)
+                    # 🚀 EL BOTÓN HTML (Sin el número "2")
                     boton_html = f"""
                     <a href="{mailto_url}" style="text-decoration: none;">
                         <div style="background-color: #FF4B4B; color: white; padding: 10px 20px; border-radius: 8px; text-align: center; font-weight: bold; font-family: sans-serif; cursor: pointer;">
-                            📧 2. Abrir Borrador de Correo
+                            📧 Abrir Borrador de Correo
                         </div>
                     </a>
                     <br>
@@ -1374,7 +1379,7 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                     st.markdown(boton_html, unsafe_allow_html=True)
                     
                     st.info("⚠️ Descarga el documento en el botón de arriba primero, y luego adjúntalo manualmente en la ventana de correo que se abrirá.")
-                    
+
         st.subheader("🚚 PASO 4: Registrar Salida a Terreno (Despacho)")
         st.caption("Marca los pedidos que ya fueron retirados físicamente del taller para descontarlos de la tarjeta de Listos en Taller.")
         
