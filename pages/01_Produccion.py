@@ -1323,7 +1323,7 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                     st.markdown("<br>", unsafe_allow_html=True)
                     
                     # 🏷️ ARMADO DEL NOMBRE DINÁMICO (Ej: Pedido OT-85 TF-13655 SANTIAGO...)
-                    num_ped = st.session_state.get('pdf_num', '')
+                    num_ped = str(st.session_state.get('pdf_num', '')).strip().upper().replace("OT-", "").replace("OT", "")
                     obra_ped = str(st.session_state.get('pdf_obra', '')).replace('/', '-').replace('\\', '-')
                     nombre_archivo_final = f"Pedido OT-{num_ped} {obra_ped}"
 
