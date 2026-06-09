@@ -1362,7 +1362,17 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                     body_enc = urllib.parse.quote(texto_correo)
                     mailto_url = f"mailto:{correo_destino}?subject={subj_enc}&body={body_enc}"
                     
-                    st.link_button("📧 2. Abrir Borrador de Correo", mailto_url, type="primary")
+                    # 🚀 EL BOTÓN HTML INDESTRUCTIBLE (Bypassea el bloqueo de la nube)
+                    boton_html = f"""
+                    <a href="{mailto_url}" style="text-decoration: none;">
+                        <div style="background-color: #FF4B4B; color: white; padding: 10px 20px; border-radius: 8px; text-align: center; font-weight: bold; font-family: sans-serif; cursor: pointer;">
+                            📧 2. Abrir Borrador de Correo
+                        </div>
+                    </a>
+                    <br>
+                    """
+                    st.markdown(boton_html, unsafe_allow_html=True)
+                    
                     st.info("⚠️ Descarga el documento en el botón de arriba primero, y luego adjúntalo manualmente en la ventana de correo que se abrirá.")
         st.subheader("🚚 PASO 4: Registrar Salida a Terreno (Despacho)")
         st.caption("Marca los pedidos que ya fueron retirados físicamente del taller para descontarlos de la tarjeta de Listos en Taller.")
