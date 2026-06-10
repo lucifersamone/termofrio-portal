@@ -1783,6 +1783,10 @@ with tab4:
                     return float(row['kg_parcial_periodo'])
             
             df_f['kg_reales'] = df_f.apply(calcular_kg_real_edp, axis=1)
+
+            # 🧹 LÍNEA NUEVA: Borramos el pedido_id sobrante para evitar el conflicto de sufijos
+            df_f = df_f.drop(columns=['pedido_id'], errors='ignore')
+
             st.markdown("### 🔍 Filtros Adicionales")
             cf1, cf2, cf3, cf4 = st.columns(4)
             
