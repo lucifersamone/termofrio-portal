@@ -1866,14 +1866,22 @@ with tab4:
                     "CECO": ceco, "OBRA": obra,
                     "KG_GALV": round(g[g['TIPO_EDP']=='GALV']['peso_total'].sum(), 1), "$ GALV": round(g[g['TIPO_EDP']=='GALV']['total_linea'].sum(), 0),
                     "KG_FE": round(g[g['TIPO_EDP']=='FE']['peso_total'].sum(), 1), "$ FE": round(g[g['TIPO_EDP']=='FE']['total_linea'].sum(), 0),
-                    "KG_ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['peso_total'].sum(), 1), "$ ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['total_linea'].sum(), 0)
+                    "KG_ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['peso_total'].sum(), 1), "$ ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['total_linea'].sum(), 0),
+                    "KG_INOX": round(g[g['TIPO_EDP']=='INOX']['peso_total'].sum(), 1), "$ INOX": round(g[g['TIPO_EDP']=='INOX']['total_linea'].sum(), 0) # 🔑 COLUMNA INOX DETECTADA
                 })
 
             df_edp_final = pd.DataFrame(res)
             if not df_edp_final.empty:
-                totales = pd.DataFrame([{"CECO": "TOTALES", "OBRA": "---", "KG_GALV": df_edp_final["KG_GALV"].sum(), "$ GALV": df_edp_final["$ GALV"].sum(), "KG_FE": df_edp_final["KG_FE"].sum(), "$ FE": df_edp_final["$ FE"].sum(), "KG_ESP": df_edp_final["KG_ESP"].sum(), "$ ESP": df_edp_final["$ ESP"].sum()}])
+                # Agregamos los totales de Inox también al cierre de la tabla
+                totales = pd.DataFrame([{
+                    "CECO": "TOTALES", "OBRA": "---", 
+                    "KG_GALV": df_edp_final["KG_GALV"].sum(), "$ GALV": df_edp_final["$ GALV"].sum(), 
+                    "KG_FE": df_edp_final["KG_FE"].sum(), "$ FE": df_edp_final["$ FE"].sum(), 
+                    "KG_ESP": df_edp_final["KG_ESP"].sum(), "$ ESP": df_edp_final["$ ESP"].sum(),
+                    "KG_INOX": df_edp_final["KG_INOX"].sum(), "$ INOX": df_edp_final["$ INOX"].sum() # 🔑 TOTAL INOX
+                }])
                 df_edp_final = pd.concat([df_edp_final, totales], ignore_index=True)
-                            
+                
                 st.write("### Tabla de Datos (Selecciona y copia directamente)")
                 st.dataframe(df_edp_final, use_container_width=True, hide_index=True)
                 st.download_button("📥 Descargar CSV para Excel", df_edp_final.to_csv(index=False).encode('utf-8-sig'), "EDP_Periodo.csv", "text/csv")
@@ -1956,21 +1964,68 @@ with tab5:
         st.line_chart(df_t)
         
         st.divider()
-        
+# -------------------------------------------------------------------------
+        # 📊 1. NUEVA SECCIÓN: DESGLOSE HISTÓRICO TOTAL POR TIPO DE PRODUCTO
+        # -------------------------------------------------------------------------
         df_term = df_all_ped[df_all_ped['estado'] == 'Terminado'].copy()
-        
-        def clasificar_dashboard(row):
+
+        if not df_term.empty and not df_all_items.empty:
+            df_mats = pd.merge(df_all_items, df_term, left_on='pedido_id', right_on='id', suffixes=('_item', '_ped'))
+
+            def clasificar_tipo_producto(row):
+                m = str(row.get('material', '')).upper()
+                u = str(row.get('unidad_cobro', '')).lower()
+                if "PIEZA ESPECIAL" in m or u == 'un': return "Galvanizado Esp."
+                if "FE" in m or "NEGRO" in m: return "Fierro Negro (Fe)"
+                if "INOX" in m: return "Acero Inox"
+                return "Galvanizado Base"
+
+            df_mats['tipo_producto'] = df_mats.apply(clasificar_tipo_producto, axis=1)
+
+            # Prorrateo dinámico para el resumen global
+            df_mats_res = pd.DataFrame()
+            for pid in df_mats['pedido_id'].unique():
+                df_p = df_mats[df_mats['pedido_id'] == pid].copy()
+                kg_r = df_p.iloc[0]['kg_reales']
+                kg_e = df_p.iloc[0]['kg_estimados']
+                if kg_r < 1: kg_r = kg_e
+                factor = kg_r / kg_e if kg_r > 0 and kg_e > 0 else 1.0
+                mask_un = df_p['unidad_cobro'].str.lower() == 'un'
+                df_p.loc[~mask_un, 'peso_total'] *= factor
+                df_mats_res = pd.concat([df_mats_res, df_p])
+
+            if not df_mats_res.empty:
+                df_g_mat = df_mats_res.groupby('tipo_producto')['peso_total'].sum()
+
+                st.markdown("---")
+                st.subheader("📦 Kilos Históricos Fabricados por Tipo de Producto")
+                st.caption("Métricas consolidadas del taller distribuidas proporcionalmente por material.")
+
+                cm1, cm2, cm3, cm4 = st.columns(4)
+                cm1.metric("Galvanizado Base", f"{df_g_mat.get('Galvanizado Base', 0.0):,.1f} Kg")
+                cm2.metric("Galvanizado Esp.", f"{df_g_mat.get('Galvanizado Esp.', 0.0):,.1f} Kg")
+                cm3.metric("Fierro Negro (Fe)", f"{df_g_mat.get('Fierro Negro (Fe)', 0.0):,.1f} Kg")
+                cm4.metric("Acero Inox", f"{df_g_mat.get('Acero Inox', 0.0):,.1f} Kg")
+
+                st.bar_chart(df_g_mat)
+            else:
+                st.info("No hay desglose de materiales disponible.")
+
+        # -------------------------------------------------------------------------
+        # 📊 2. SECCIÓN ORIGINAL: AVANCE Y SALDO DE CONTRATOS POR OBRA
+        # -------------------------------------------------------------------------
+        def clasificar_contrato(row):
             m = str(row['material']).upper()
             if "FE" in m or "FIERRO" in m: return "FE"
             if "INOX" in m: return "INOX"
             return "GALV"
-            
+
         reales_mat = pd.DataFrame()
-        
+
         if not df_term.empty and not df_all_items.empty:
             df_full_dash = pd.merge(df_all_items, df_term, left_on='pedido_id', right_on='id', suffixes=('_item', '_ped'))
-            df_full_dash['TIPO_MAT'] = df_full_dash.apply(clasificar_dashboard, axis=1)
-            
+            df_full_dash['TIPO_MAT'] = df_full_dash.apply(clasificar_contrato, axis=1)
+
             df_full_dash['factor'] = np.where(
                 (df_full_dash['kg_reales'] > 0) & (df_full_dash['kg_estimados'] > 0),
                 df_full_dash['kg_reales'] / df_full_dash['kg_estimados'],
@@ -1980,18 +2035,18 @@ with tab5:
             reales_mat = df_full_dash.groupby(['obra_codigo', 'TIPO_MAT'])['peso_ajustado'].sum().unstack(fill_value=0).reset_index()
 
         conn = get_connection()
-        try: 
+        try:
             df_obras_contrato = pd.read_sql("SELECT nombre as obra_codigo, kg_contrato, kg_adicionales, kg_historicos, kg_hist_galv, kg_hist_fe, kg_hist_inox FROM maestro_obras", conn)
-        except: 
+        except:
             df_obras_contrato = pd.DataFrame()
         conn.close()
-        
+
         if not df_obras_contrato.empty:
             if not reales_mat.empty:
                 df_merge = pd.merge(df_obras_contrato, reales_mat, on='obra_codigo', how='left').fillna(0)
             else:
                 df_merge = df_obras_contrato.copy()
-            
+
             for c in ['GALV', 'FE', 'INOX']:
                 if c not in df_merge.columns: df_merge[c] = 0.0
             for c in ['kg_historicos', 'kg_hist_galv', 'kg_hist_fe', 'kg_hist_inox', 'kg_contrato', 'kg_adicionales']:
@@ -2001,29 +2056,30 @@ with tab5:
             df_merge['Galvanizado Total'] = df_merge['GALV'] + df_merge['kg_hist_galv'] + df_merge['kg_historicos']
             df_merge['Fierro (FE)'] = df_merge['FE'] + df_merge['kg_hist_fe']
             df_merge['Acero Inox'] = df_merge['INOX'] + df_merge['kg_hist_inox']
-            
+
+            st.markdown("---")
             st.subheader("📊 Avance y Saldo de Contratos (SOLO GALVANIZADO)")
             st.caption("Visualiza el total del contrato, lo que ya se fabricó y **el saldo que va restando**.")
-            
+
             df_general = df_merge[(df_merge['kg_contrato'] > 0) | (df_merge['Galvanizado Total'] > 0)].copy()
-            
+
             if not df_general.empty:
                 df_general['Total Contratado'] = df_general['kg_contrato'] + df_general['kg_adicionales']
                 df_general['Saldo Restante'] = df_general['Total Contratado'] - df_general['Galvanizado Total']
-                
+
                 df_plot_general = df_general[['obra_codigo', 'Total Contratado', 'Galvanizado Total', 'Saldo Restante']].copy()
                 df_plot_general.rename(columns={
-                    'Total Contratado': '1. Total Contrato', 
+                    'Total Contratado': '1. Total Contrato',
                     'Galvanizado Total': '2. Ya Fabricado',
                     'Saldo Restante': '3. Saldo Restante'
                 }, inplace=True)
-                
+
                 df_melt = df_plot_general.melt('obra_codigo', var_name='Categoría', value_name='Kilos')
-                df_melt_labels = df_melt[df_melt['Kilos'] != 0] 
-                
+                df_melt_labels = df_melt[df_melt['Kilos'] != 0]
+
                 color_scale_avance = alt.Scale(
                     domain=['1. Total Contrato', '2. Ya Fabricado', '3. Saldo Restante'],
-                    range=['#2980b9', '#e67e22', '#27ae60'] 
+                    range=['#2980b9', '#e67e22', '#27ae60']
                 )
 
                 base = alt.Chart(df_melt).encode(
@@ -2033,6 +2089,17 @@ with tab5:
                     xOffset='Categoría:N'
                 )
                 bars = base.mark_bar()
+                
+                # Etiqueta de texto reconstruida para evitar errores
                 text = alt.Chart(df_melt_labels).mark_text(
                     align='center', baseline='bottom', dy=-5, fontSize=11, fontWeight='bold'
-                ).encode()
+                ).encode(
+                    x=alt.X('obra_codigo:N'),
+                    y=alt.Y('Kilos:Q'),
+                    text=alt.Text('Kilos:Q', format='.1f'),
+                    color=alt.value('black'),
+                    xOffset='Categoría:N'
+                )
+                
+                # Renderizado final del gráfico original
+                st.altair_chart(bars + text, use_container_width=True)
