@@ -1746,10 +1746,43 @@ with tab4:
             f_ini = date(hoy.year, hoy.month, 21); next_m = hoy.month+1 if hoy.month<12 else 1; next_y = hoy.year if hoy.month<12 else hoy.year+1; f_fin = date(next_y, next_m, 20)
         
         sd = c1.date_input("Inicio Periodo", value=f_ini); ed = c2.date_input("Fin Periodo", value=f_fin)
-        mask = (df_all_ped['estado'] == 'Terminado') & (df_all_ped['fecha_termino'] >= pd.Timestamp(sd)) & (df_all_ped['fecha_termino'] <= pd.Timestamp(ed))
-        df_f = df_all_ped[mask].copy() 
         
+        # 1. 🔍 BUSCADOR DE PARCIALIDADES EN LA NUBE PARA EL PERIODO SELECCIONADO
+        conn = get_connection()
+        try:
+            df_parciales_periodo = pd.read_sql(f"""
+                SELECT pedido_id, SUM(kilos) as kg_parcial_periodo 
+                FROM entregas_parciales 
+                WHERE fecha >= '{sd}' AND fecha <= '{ed} 23:59:59' 
+                GROUP BY pedido_id
+            """, conn)
+        except:
+            df_parciales_periodo = pd.DataFrame(columns=['pedido_id', 'kg_parcial_periodo'])
+        conn.close()
+
+        # 2. 🎛️ FILTRADO EXTENDIDO: Traer Terminados del periodo O Pedidos con movimiento de camiones
+        df_all_ped['fecha_termino'] = pd.to_datetime(df_all_ped['fecha_termino'], mixed=True, errors='coerce')
+        
+        mask_terminados = (df_all_ped['estado'] == 'Terminado') & (df_all_ped['fecha_termino'] >= pd.Timestamp(sd)) & (df_all_ped['fecha_termino'] <= pd.Timestamp(ed))
+        mask_parciales = df_all_ped['id'].isin(df_parciales_periodo['pedido_id'].tolist())
+        
+        # Unimos ambos mundos para que nada se quede fuera de la Carátula EDP
+        df_f = df_all_ped[mask_terminados | mask_parciales].copy() 
+        
+        # 3. ⚖️ ASIGNACIÓN MATEMÁTICA DE KILOS REALES PARA ESTE MES
         if not df_f.empty:
+            df_f = df_f.merge(df_parciales_periodo, left_on='id', right_on='pedido_id', how='left')
+            df_f['kg_parcial_periodo'] = df_f['kg_parcial_periodo'].fillna(0.0)
+            
+            def calcular_kg_real_edp(row):
+                # Si el pedido se cerró por completo este mes, su peso real es el de cierre final
+                if row['estado'] == 'Terminado' and pd.Timestamp(sd) <= row['fecha_termino'] <= pd.Timestamp(ed):
+                    return float(row['kg_reales'])
+                # Si sigue pendiente, su peso real para este periodo es estrictamente lo que despachó el camión
+                else:
+                    return float(row['kg_parcial_periodo'])
+            
+            df_f['kg_reales'] = df_f.apply(calcular_kg_real_edp, axis=1)
             st.markdown("### 🔍 Filtros Adicionales")
             cf1, cf2, cf3, cf4 = st.columns(4)
             
