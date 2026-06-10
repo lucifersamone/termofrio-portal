@@ -1761,7 +1761,7 @@ with tab4:
         conn.close()
 
         # 2. 🎛️ FILTRADO EXTENDIDO: Traer Terminados del periodo O Pedidos con movimiento de camiones
-        df_all_ped['fecha_termino'] = pd.to_datetime(df_all_ped['fecha_termino'], mixed=True, errors='coerce')
+        df_all_ped['fecha_termino'] = pd.to_datetime(df_all_ped['fecha_termino'], format='mixed', errors='coerce')
         
         mask_terminados = (df_all_ped['estado'] == 'Terminado') & (df_all_ped['fecha_termino'] >= pd.Timestamp(sd)) & (df_all_ped['fecha_termino'] <= pd.Timestamp(ed))
         mask_parciales = df_all_ped['id'].isin(df_parciales_periodo['pedido_id'].tolist())
