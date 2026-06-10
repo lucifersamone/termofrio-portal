@@ -21,19 +21,22 @@ st.title("🛡️ Auditoría Interna - Termofrio SPA")
 
 # --- FUNCIÓN DE SEGURIDAD PARA LA BASE DE DATOS ---
 def asegurar_columnas_despacho():
-    conn = sqlite3.connect(DB_PROD)
-    cursor = conn.cursor()
-    # Intentamos agregar las columnas por si acaso no existen
     try:
-        cursor.execute("ALTER TABLE pedidos ADD COLUMN estado_despacho TEXT DEFAULT 'En Taller'")
-    except:
-        pass # Si ya existe, no hace nada
-    try:
-        cursor.execute("ALTER TABLE pedidos ADD COLUMN fecha_despacho DATE")
-    except:
-        pass # Si ya existe, no hace nada
-    conn.commit()
-    conn.close()
+        # Importamos nuestra conexión oficial a la nube (para evitar errores de variables)
+        from db_conexion import get_connection 
+        
+        conn = get_connection()
+        c = conn.cursor()
+        
+        # Le ordenamos a la nube que agregue las columnas SOLO si es que aún no existen
+        c.execute("ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS estado_despacho TEXT DEFAULT 'En Taller'")
+        c.execute("ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS fecha_despacho DATE")
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        # Si las columnas ya existen o hay un mínimo desfase, pasará de largo sin romper la app
+        pass
 
 # Ejecutamos la seguridad apenas abre el archivo
 asegurar_columnas_despacho()
