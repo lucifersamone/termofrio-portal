@@ -1075,13 +1075,23 @@ with tab2:
         st.markdown("##### 📏 Medidas y Especificaciones del Pedido")
         if not df_items_raw.empty:
             
-            # 1. Definimos EXACTAMENTE las columnas que queremos desaparecer (Sistema + Precios)
+            # 1. Copiamos la tabla original para no alterar la base de datos
+            df_vista = df_items_raw.copy()
+            
+            # 2. LISTA NEGRA: Eliminamos EXCLUSIVAMENTE sistema y precios totales
             columnas_ocultas = ['id', 'pedido_id', 'created_at', 'total_linea', 'origen_precio']
+            df_vista = df_vista.drop(columns=[c for c in columnas_ocultas if c in df_vista.columns], errors='ignore')
             
-            # 2. El sistema borra solo esas y deja el resto intacto en su orden original
-            df_vista = df_items_raw.drop(columns=columnas_ocultas, errors='ignore')
+            # 3. ORDEN ESTRICTO: Forzamos que las medidas y detalles vayan primero (incluimos plural y singular por si acaso)
+            orden_preferido = ['item_numero', 'descripcion', 'cantidad', 'detalle', 'detalles', 'peso_total', 'espesor', 'material', 'unidad_cobro', 'precio_unitario']
             
-            # 3. Mostramos la tabla
+            # Rescatamos las columnas preferidas que sí existen, y luego agregamos cualquier otra sobrante al final
+            cols_ordenadas = [c for c in orden_preferido if c in df_vista.columns]
+            cols_restantes = [c for c in df_vista.columns if c not in cols_ordenadas]
+            
+            df_vista = df_vista[cols_ordenadas + cols_restantes]
+            
+            # 4. Mostramos la tabla desplegada
             st.dataframe(df_vista, use_container_width=True, hide_index=True)
         else:
             st.info("💡 No hay desglose de piezas registrado para este pedido.")
