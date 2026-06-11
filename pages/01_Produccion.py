@@ -1070,6 +1070,16 @@ with tab2:
                 if obs_txt: msj += f"**📝 Comentarios:** {obs_txt}"
                 st.warning(msj)
 
+                # 📊 TABLA DE MEDIDAS A PANTALLA COMPLETA
+        if fila_ped is not None:
+            st.markdown("##### 📏 Medidas y Especificaciones del Pedido")
+            if not df_items_raw.empty:
+            # Ocultamos columnas de sistema y mostramos el 100% del ancho
+                df_vista = df_items_raw.drop(columns=['id', 'pedido_id', 'created_at'], errors='ignore')
+                st.dataframe(df_vista, use_container_width=True, hide_index=True)
+            else:
+                st.info("💡 No hay desglose de piezas registrado para este pedido.")
+
         st.divider()
 
         col_left, col_right = st.columns(2)
