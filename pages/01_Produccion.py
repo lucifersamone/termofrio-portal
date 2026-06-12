@@ -15,6 +15,8 @@ import matplotlib.patches as patches
 import psycopg2
 import re
 from PIL import Image
+import base64
+import os
 
 # ==========================================================
 # --- FUNCIÓN DE LIMPIEZA DE TEXTO (AGREGAR AQUÍ) ---
@@ -1355,7 +1357,22 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
 
                                 c1_comp, c2_comp = st.columns(2)
                                 
-                                # 1. BOTÓN DE DESCARGA (Vale de Salida HTML - CON TIMBRE)
+                                # ⚠️ IMPORTANTE: Pon aquí el nombre exacto de tu archivo de timbre
+                                ruta_timbre = "firma_timbre/timbre.png"  
+                                
+                                timbre_html = ""
+                                if os.path.exists(ruta_timbre):
+                                    with open(ruta_timbre, "rb") as img_file:
+                                        img_base64 = base64.b64encode(img_file.read()).decode('utf-8')
+                                        # Determinamos el tipo de imagen
+                                        ext = ruta_timbre.split('.')[-1].lower()
+                                        mime_t = f"image/{ext}" if ext in ['png', 'jpg', 'jpeg'] else "image/png"
+                                        timbre_html = f'<img src="data:{mime_t};base64,{img_base64}" style="max-width: 250px; height: auto;">'
+                                else:
+                                    # Si te equivocas en el nombre, no se cae la app, solo muestra esto:
+                                    timbre_html = f'<div style="color: red; font-weight: bold;">(Falta archivo: {ruta_timbre})</div>'
+
+                                # 1. BOTÓN DE DESCARGA (Vale de Salida HTML - CON IMAGEN REAL)
                                 html_vale = f"""
                                 <html>
                                 <body style="font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: auto;">
@@ -1384,10 +1401,8 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                                         </tr>
                                     </table>
                                     <br><br><br>
-                                    <div style="text-align: center; margin-top: 40px;">
-                                        <div style="display: inline-block; border: 3px solid #1a4a75; padding: 25px 40px; border-radius: 10px; color: #1a4a75; font-weight: bold; font-size: 18px; letter-spacing: 1px; text-transform: uppercase;">
-                                            TIMBRE TALLER TERMOFRIO
-                                        </div>
+                                    <div style="text-align: center; margin-top: 20px;">
+                                        {timbre_html}
                                     </div>
                                 </body>
                                 </html>
