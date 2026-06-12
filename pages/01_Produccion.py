@@ -1178,7 +1178,7 @@ with tab2:
                         if 'item_numero' not in df_para_pdf.columns and 'item_num' in df_para_pdf.columns:
                             df_para_pdf['item_numero'] = df_para_pdf['item_num']
                 
-                # 2. GENERACIÓN DEL VISOR HTML (A LA VELOCIDAD DE LA LUZ)
+                # 2. GENERACIÓN DEL VISOR HTML (AHORA CON ESPESOR)
                 import base64
                 import os
 
@@ -1207,17 +1207,20 @@ with tab2:
                     for _, row in df_para_pdf.iterrows():
                         desc = str(row.get('descripcion', '')).replace('nan', '')
                         det = str(row.get('detalles', '')).replace('nan', '')
+                        esp = str(row.get('espesor', '')).replace('nan', '') # 📏 AQUÍ EXTRAEMOS EL ESPESOR
+                        
                         filas_html += f"""
                         <tr>
                             <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('item_numero', '')}</td>
                             <td style="padding: 8px; border: 1px solid #ddd;">{desc}</td>
                             <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('cantidad', '')}</td>
                             <td style="padding: 8px; border: 1px solid #ddd;">{det}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold;">{esp}</td>
                             <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('peso_total', '')}</td>
                         </tr>
                         """
                 else:
-                    filas_html = '<tr><td colspan="5" style="text-align:center; padding:10px;">No hay piezas registradas</td></tr>'
+                    filas_html = '<tr><td colspan="6" style="text-align:center; padding:10px;">No hay piezas registradas</td></tr>'
 
                 num_ped_limpio = str(fila_ped['num_pedido']).strip().upper().replace("OT-", "").replace("OT", "")
                 obra_limpia = str(fila_ped['obra_codigo']).replace('/', '-').replace('\\', '-')
@@ -1282,7 +1285,7 @@ with tab2:
                                     <th>Descripción</th>
                                     <th>Cant.</th>
                                     <th>Dimensiones / Detalles</th>
-                                    <th>Peso (Kg)</th>
+                                    <th>Espesor</th> <th>Peso (Kg)</th>
                                 </tr>
                             </thead>
                             <tbody>
