@@ -1392,11 +1392,19 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                                 </body>
                                 </html>
                                 """
+                                # 1. BOTÓN DE DESCARGA (Vale de Salida HTML - FIRMA ÚNICA)
+                                # ... (Todo el texto del html_vale queda exactamente igual arriba) ...
+                                
                                 with c1_comp:
+                                    # 🏷️ ARMADO DEL NOMBRE DINÁMICO PARA EL VALE
+                                    num_limpio = str(num_ped_p).strip().upper().replace("OT-", "").replace("OT", "")
+                                    obra_limpia = str(obra_ped_p).replace('/', '-').replace('\\', '-')
+                                    nombre_archivo_vale = f"Vale Parcial OT-{num_limpio} {obra_limpia}.html"
+                                    
                                     st.download_button(
                                         label="📄 Descargar Vale de Salida",
                                         data=html_vale,
-                                        file_name=f"Vale_Parcial_{num_ped_p}_{fila_comp['fecha_str'][:10]}.html",
+                                        file_name=nombre_archivo_vale,
                                         mime="text/html",
                                         type="primary",
                                         use_container_width=True
