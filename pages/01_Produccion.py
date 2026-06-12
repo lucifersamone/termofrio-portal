@@ -1557,12 +1557,17 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                             html_iso = f'<img src="{src_iso}" style="height: 60px;">' if src_iso else ''
                             html_timbre = f'<img src="{src_timbre}" style="max-width: 250px;">' if src_timbre else '<div style="display:inline-block; border:3px solid #1a4a75; padding:20px 40px; border-radius:10px; color:#1a4a75; font-weight:bold;">TIMBRE TALLER TERMOFRIO</div>'
 
+                            # 🏷️ ARMADO DEL NOMBRE DINÁMICO PARA EL PDF DEL NAVEGADOR
+                            num_ped_limpio = str(fila_pdf['num_pedido']).strip().upper().replace("OT-", "").replace("OT", "")
+                            obra_limpia = str(fila_pdf['obra_codigo']).replace('/', '-').replace('\\', '-')
+                            titulo_pdf = f"Comprobante OT-{num_ped_limpio} {obra_limpia}"
+
                             html_paso3 = f"""
                             <!DOCTYPE html>
                             <html>
                             <head>
                                 <meta charset="UTF-8">
-                                <title>Comprobante OT</title>
+                                <title>{titulo_pdf}</title>
                                 <style>
                                     body {{ font-family: Arial, sans-serif; padding: 20px; max-width: 900px; margin: auto; }}
                                     @media print {{
