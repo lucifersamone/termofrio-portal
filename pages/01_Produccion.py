@@ -1503,7 +1503,7 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                         except Exception as e:
                             st.error(f"❌ Error en el motor de conversión: Asegúrese de tener 'libreoffice' en packages.txt. Detalle: {e}")
                     else:
-                        # ⚡ MODO MANUAL: Generamos el Visor HTML Ultrarrápido en vez del PDF pesado
+                        # ⚡ MODO MANUAL: Generamos el Visor HTML Ultrarrápido con Logos Reales
                         try:
                             conn_html = get_connection()
                             df_items = pd.read_sql(f"SELECT * FROM items_pedido WHERE pedido_id={int(fila_pdf['id'])}", conn_html)
@@ -1526,6 +1526,28 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                             else:
                                 filas_html = '<tr><td colspan="5" style="text-align:center; padding:10px;">No hay piezas detalladas</td></tr>'
 
+                            # 🖼️ LECTURA DE IMÁGENES EN BASE64 DESDE LA CARPETA
+                            import base64
+                            import os
+                            
+                            def get_b64(ruta):
+                                if os.path.exists(ruta):
+                                    with open(ruta, "rb") as f:
+                                        ext = ruta.split('.')[-1].lower()
+                                        mime = f"image/{ext}" if ext in ['png', 'jpg', 'jpeg'] else "image/jpeg"
+                                        return f"data:{mime};base64,{base64.b64encode(f.read()).decode('utf-8')}"
+                                return None
+
+                            # ⚠️ Busca los archivos en la carpeta firma_timbre
+                            src_logo = get_b64("firma_timbre/termofriologo.JPG")
+                            src_iso = get_b64("firma_timbre/tfiso.JPG")
+                            src_timbre = get_b64("firma_timbre/timbre.jpg")
+
+                            # Si encuentra las fotos, crea la etiqueta de imagen. Si no, pone un texto por defecto para no romper el PDF.
+                            html_logo = f'<img src="{src_logo}" style="height: 60px;">' if src_logo else '<h1 style="color:#1a4a75; margin:0;">TERMOFRIO SPA</h1>'
+                            html_iso = f'<img src="{src_iso}" style="height: 60px;">' if src_iso else ''
+                            html_timbre = f'<img src="{src_timbre}" style="max-width: 250px;">' if src_timbre else '<div style="display:inline-block; border:3px solid #1a4a75; padding:20px 40px; border-radius:10px; color:#1a4a75; font-weight:bold;">TIMBRE TALLER TERMOFRIO</div>'
+
                             html_paso3 = f"""
                             <!DOCTYPE html>
                             <html>
@@ -1542,6 +1564,11 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                                     .btn-magico:hover {{ background-color: #123555; }}
                                     table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }}
                                     th {{ background-color: #1a4a75; color: white; padding: 10px; border: 1px solid #ddd; }}
+                                    /* Clases para el encabezado profesional */
+                                    .header-container {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }}
+                                    .header-center {{ flex: 2; text-align: center; }}
+                                    .header-side {{ flex: 1; }}
+                                    .header-right {{ text-align: right; }}
                                 </style>
                             </head>
                             <body>
@@ -1552,9 +1579,17 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                                 </div>
 
                                 <div id="documento-oficial">
-                                    <h1 style="color: #1a4a75; text-align: center; margin-bottom: 0;">TERMOFRIO SPA</h1>
-                                    <h3 style="color: #555; text-align: center; margin-top: 5px;">Comprobante Oficial de Pedido (Ingreso Manual)</h3>
+                                    <div class="header-container">
+                                        <div class="header-side">{html_logo}</div>
+                                        <div class="header-center">
+                                            <h3 style="color: #555; margin: 0;">Comprobante Oficial de Pedido</h3>
+                                            <p style="margin: 5px 0 0 0; color: #777;">Ingreso Manual</p>
+                                        </div>
+                                        <div class="header-side header-right">{html_iso}</div>
+                                    </div>
+                                    
                                     <hr style="border: 1px solid #ccc; margin: 20px 0;">
+                                    
                                     <table style="width: 100%; margin-bottom: 20px; font-size: 16px; border:none;">
                                         <tr>
                                             <td style="border:none;"><strong>Pedido N°:</strong> {fila_pdf['num_pedido']}</td>
@@ -1583,25 +1618,21 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                                     
                                     <br><br><br>
                                     <div style="text-align: center; margin-top: 40px;">
-                                        <div style="display: inline-block; border: 3px solid #1a4a75; padding: 20px 40px; border-radius: 10px; color: #1a4a75; font-weight: bold; font-size: 18px;">
-                                            TIMBRE TALLER TERMOFRIO
-                                        </div>
+                                        {html_timbre}
                                     </div>
                                 </div>
                             </body>
                             </html>
                             """
                             
-                            # Guardamos el HTML temporalmente para que el botón de descarga lo detecte
                             import tempfile
-                            import os
                             temp_dir = tempfile.gettempdir()
                             ruta_html = os.path.join(temp_dir, f"visor_ot_{fila_pdf['id']}.html")
                             with open(ruta_html, "w", encoding="utf-8") as f:
                                 f.write(html_paso3)
                             
                             ruta_documento = ruta_html
-                            st.success("⚡ Visor HTML ultrarrápido generado en 0.1s.")
+                            st.success("⚡ Visor HTML ultrarrápido generado con logos y timbres incrustados.")
                         except Exception as e:
                             st.error(f"❌ Error al generar el visor HTML: {e}")
                     if ruta_documento:
