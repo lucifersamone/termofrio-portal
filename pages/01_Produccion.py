@@ -1503,14 +1503,107 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                         except Exception as e:
                             st.error(f"❌ Error en el motor de conversión: Asegúrese de tener 'libreoffice' en packages.txt. Detalle: {e}")
                     else:
-                        # MODO MANUAL: Generamos el PDF estándar desde cero
-                        ruta_documento = generar_pdf_firmado(ticket_id=fila_pdf['num_pedido'], kg_reales=fila_pdf['kg_reales'])
-                        if ruta_documento:
-                            st.success("✅ PDF Oficial generado exitosamente.")
-                        else:
-                            st.error("❌ Error al generar el PDF de la orden manual.")
+                        # ⚡ MODO MANUAL: Generamos el Visor HTML Ultrarrápido en vez del PDF pesado
+                        try:
+                            conn_html = get_connection()
+                            df_items = pd.read_sql(f"SELECT * FROM items_pedido WHERE pedido_id={int(fila_pdf['id'])}", conn_html)
+                            conn_html.close()
                             
-                    # Si todo salió bien, guardamos en memoria para el botón
+                            filas_html = ""
+                            if not df_items.empty:
+                                for _, row in df_items.iterrows():
+                                    desc = str(row.get('descripcion', '')).replace('nan', '')
+                                    det = str(row.get('detalles', '')).replace('nan', '')
+                                    filas_html += f"""
+                                    <tr>
+                                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('item_numero', '')}</td>
+                                        <td style="padding: 8px; border: 1px solid #ddd;">{desc}</td>
+                                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('cantidad', '')}</td>
+                                        <td style="padding: 8px; border: 1px solid #ddd;">{det}</td>
+                                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('peso_total', '')}</td>
+                                    </tr>
+                                    """
+                            else:
+                                filas_html = '<tr><td colspan="5" style="text-align:center; padding:10px;">No hay piezas detalladas</td></tr>'
+
+                            html_paso3 = f"""
+                            <!DOCTYPE html>
+                            <html>
+                            <head>
+                                <meta charset="UTF-8">
+                                <title>Comprobante OT</title>
+                                <style>
+                                    body {{ font-family: Arial, sans-serif; padding: 20px; max-width: 900px; margin: auto; }}
+                                    @media print {{
+                                        .no-imprimir {{ display: none !important; }}
+                                        @page {{ margin: 0.5cm; }}
+                                    }}
+                                    .btn-magico {{ background-color: #1a4a75; color: white; padding: 15px 30px; border: none; border-radius: 8px; font-size: 18px; cursor: pointer; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
+                                    .btn-magico:hover {{ background-color: #123555; }}
+                                    table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }}
+                                    th {{ background-color: #1a4a75; color: white; padding: 10px; border: 1px solid #ddd; }}
+                                </style>
+                            </head>
+                            <body>
+                                <div class="no-imprimir" style="text-align: center; margin-bottom: 30px; background-color: #f0f2f6; padding: 20px; border-radius: 10px;">
+                                    <h3 style="margin-top:0; color:#333;">📄 Visor de Documento Oficial</h3>
+                                    <p style="color:#666;">Revisa que los datos estén correctos. Haz clic abajo para guardar el archivo definitivo.</p>
+                                    <button class="btn-magico" onclick="window.print()">🖨️ Guardar como PDF / Imprimir</button>
+                                </div>
+
+                                <div id="documento-oficial">
+                                    <h1 style="color: #1a4a75; text-align: center; margin-bottom: 0;">TERMOFRIO SPA</h1>
+                                    <h3 style="color: #555; text-align: center; margin-top: 5px;">Comprobante Oficial de Pedido (Ingreso Manual)</h3>
+                                    <hr style="border: 1px solid #ccc; margin: 20px 0;">
+                                    <table style="width: 100%; margin-bottom: 20px; font-size: 16px; border:none;">
+                                        <tr>
+                                            <td style="border:none;"><strong>Pedido N°:</strong> {fila_pdf['num_pedido']}</td>
+                                            <td style="border:none; text-align: right;"><strong>Kilos Totales:</strong> {fila_pdf['kg_reales']} Kg</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="border:none; padding-top: 10px;"><strong>Obra:</strong> {fila_pdf['obra_codigo']}</td>
+                                            <td style="border:none; padding-top: 10px; text-align: right;"><strong>Solicitante:</strong> {fila_pdf.get('quien_envia', 'N/A')}</td>
+                                        </tr>
+                                    </table>
+                                    
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Ítem</th>
+                                                <th>Descripción</th>
+                                                <th>Cant.</th>
+                                                <th>Dimensiones / Detalles</th>
+                                                <th>Peso (Kg)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {filas_html}
+                                        </tbody>
+                                    </table>
+                                    
+                                    <br><br><br>
+                                    <div style="text-align: center; margin-top: 40px;">
+                                        <div style="display: inline-block; border: 3px solid #1a4a75; padding: 20px 40px; border-radius: 10px; color: #1a4a75; font-weight: bold; font-size: 18px;">
+                                            TIMBRE TALLER TERMOFRIO
+                                        </div>
+                                    </div>
+                                </div>
+                            </body>
+                            </html>
+                            """
+                            
+                            # Guardamos el HTML temporalmente para que el botón de descarga lo detecte
+                            import tempfile
+                            import os
+                            temp_dir = tempfile.gettempdir()
+                            ruta_html = os.path.join(temp_dir, f"visor_ot_{fila_pdf['id']}.html")
+                            with open(ruta_html, "w", encoding="utf-8") as f:
+                                f.write(html_paso3)
+                            
+                            ruta_documento = ruta_html
+                            st.success("⚡ Visor HTML ultrarrápido generado en 0.1s.")
+                        except Exception as e:
+                            st.error(f"❌ Error al generar el visor HTML: {e}")
                     if ruta_documento:
                         st.session_state.pdf_tmp = ruta_documento
                         st.session_state.pdf_num = fila_pdf['num_pedido']
@@ -1530,14 +1623,20 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                     obra_ped = str(st.session_state.get('pdf_obra', '')).replace('/', '-').replace('\\', '-')
                     nombre_archivo_final = f"Pedido OT-{num_ped} {obra_ped}"
 
-                    # 📥 SECCIÓN DE DESCARGA (Sin números confusos)
-                    with open(st.session_state.pdf_tmp, "rb") as f:
-                        if st.session_state.get("es_excel", False):
-                            ext = os.path.splitext(st.session_state.pdf_tmp)[1]
-                            if not ext: ext = ".xlsm"
-                            st.download_button("📥 Descargar Planilla Original", f, file_name=f"{nombre_archivo_final}{ext}", key="btn_dl_excel", type="primary")
-                        else:
-                            st.download_button("📄 Descargar PDF Oficial", f, file_name=f"{nombre_archivo_final}.pdf", key="btn_dl_pdf", type="primary")
+                    # 📥 SECCIÓN DE DESCARGA (Inteligente para PDF o HTML)
+            with open(st.session_state.pdf_tmp, "rb") as f:
+                if st.session_state.get("es_excel", False):
+                    ext = os.path.splitext(st.session_state.pdf_tmp)[1]
+                    if not ext == ".xlsm":
+                        st.download_button("📄 Descargar PDF Oficial de Excel", f, file_name=f"{nombre_archivo_final}{ext}", key="btn_dl_excel", type="primary")
+                else:
+                    # Detectamos si lo que se generó fue el nuevo Visor HTML o un PDF antiguo
+                    ext_manual = os.path.splitext(st.session_state.pdf_tmp)[1]
+                    if ext_manual.lower() == ".html":
+                        st.download_button("⬇️ Descargar Visor del Comprobante", f, file_name=f"{nombre_archivo_final}.html", mime="text/html", key="btn_dl_pdf", type="primary")
+                        st.caption("💡 Abre el archivo descargado y presiona el botón azul gigante para guardarlo como PDF definitivo.")
+                    else:
+                        st.download_button("📄 Descargar PDF Oficial", f, file_name=f"{nombre_archivo_final}.pdf", key="btn_dl_pdf", type="primary")
                     
                     # 📬 SECCIÓN DE CORREO (Renombrada para no chocar con los PASOS)
                     st.markdown("---")
