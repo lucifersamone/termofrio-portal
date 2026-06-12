@@ -1531,6 +1531,15 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                             import os
                             
                             def get_b64(ruta):
+                                # 1. Si no encuentra la ruta exacta, busca variaciones de extensión automáticamente
+                                if not os.path.exists(ruta):
+                                    ruta_base = os.path.splitext(ruta)[0]
+                                    for ext in ['.jpg', '.JPG', '.png', '.PNG', '.jpeg', '.JPEG']:
+                                        if os.path.exists(ruta_base + ext):
+                                            ruta = ruta_base + ext
+                                            break
+                                
+                                # 2. Si finalmente lo encuentra, lo convierte a código
                                 if os.path.exists(ruta):
                                     with open(ruta, "rb") as f:
                                         ext = ruta.split('.')[-1].lower()
@@ -1538,12 +1547,12 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                                         return f"data:{mime};base64,{base64.b64encode(f.read()).decode('utf-8')}"
                                 return None
 
-                            # ⚠️ Busca los archivos en la carpeta firma_timbre
+                            # ⚠️ Búsqueda inteligente en la carpeta firma_timbre
                             src_logo = get_b64("firma_timbre/termofriologo.JPG")
                             src_iso = get_b64("firma_timbre/tfiso.JPG")
-                            src_timbre = get_b64("firma_timbre/timbre.jpg")
+                            src_timbre = get_b64("firma_timbre/timbre") # Al no ponerle extensión, buscará cualquiera (.png, .JPG, etc.)
 
-                            # Si encuentra las fotos, crea la etiqueta de imagen. Si no, pone un texto por defecto para no romper el PDF.
+                            # Si encuentra las fotos, crea la etiqueta. Si no, pone el texto de respaldo.
                             html_logo = f'<img src="{src_logo}" style="height: 60px;">' if src_logo else '<h1 style="color:#1a4a75; margin:0;">TERMOFRIO SPA</h1>'
                             html_iso = f'<img src="{src_iso}" style="height: 60px;">' if src_iso else ''
                             html_timbre = f'<img src="{src_timbre}" style="max-width: 250px;">' if src_timbre else '<div style="display:inline-block; border:3px solid #1a4a75; padding:20px 40px; border-radius:10px; color:#1a4a75; font-weight:bold;">TIMBRE TALLER TERMOFRIO</div>'
