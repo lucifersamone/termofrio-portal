@@ -1355,7 +1355,7 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
 
                                 c1_comp, c2_comp = st.columns(2)
                                 
-                                # 1. BOTÓN DE DESCARGA (Vale de Salida HTML - FIRMA ÚNICA)
+                                # 1. BOTÓN DE DESCARGA (Vale de Salida HTML - CON TIMBRE)
                                 html_vale = f"""
                                 <html>
                                 <body style="font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: auto;">
@@ -1383,17 +1383,15 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                                             <td style="padding: 15px; font-weight: bold; text-align: center;">{fila_comp['kilos']} Kg</td>
                                         </tr>
                                     </table>
-                                    <br><br><br><br><br>
-                                    <table style="width: 100%; text-align: center; margin-top: 40px; font-size: 16px;">
-                                        <tr>
-                                            <td>___________________________<br>Firma Despachador (Taller)</td>
-                                        </tr>
-                                    </table>
+                                    <br><br><br>
+                                    <div style="text-align: center; margin-top: 40px;">
+                                        <div style="display: inline-block; border: 3px solid #1a4a75; padding: 25px 40px; border-radius: 10px; color: #1a4a75; font-weight: bold; font-size: 18px; letter-spacing: 1px; text-transform: uppercase;">
+                                            TIMBRE TALLER TERMOFRIO
+                                        </div>
+                                    </div>
                                 </body>
                                 </html>
                                 """
-                                # 1. BOTÓN DE DESCARGA (Vale de Salida HTML - FIRMA ÚNICA)
-                                # ... (Todo el texto del html_vale queda exactamente igual arriba) ...
                                 
                                 with c1_comp:
                                     # 🏷️ ARMADO DEL NOMBRE DINÁMICO PARA EL VALE
