@@ -1340,9 +1340,22 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                                 # Rescatamos la fila exacta seleccionada
                                 fila_comp = df_mostrar[df_mostrar['fecha_str'] + " | " + df_mostrar['kilos'].astype(str) + " Kg" == sel_comp].iloc[0]
                                 
+                                # 🔍 NUEVO: BÚSQUEDA AUTOMÁTICA DEL CORREO DEL SOLICITANTE
+                                correo_destino_p = ""
+                                try:
+                                    conn_p = get_connection()
+                                    df_quien = pd.read_sql(f"SELECT quien_envia FROM pedidos WHERE id={int(id_c)}", conn_p)
+                                    if not df_quien.empty:
+                                        quien_pidio = str(df_quien.iloc[0]['quien_envia']).strip()
+                                        df_correo_p = pd.read_sql(f"SELECT correo FROM directorio_solicitantes WHERE nombre='{quien_pidio}'", conn_p)
+                                        if not df_correo_p.empty:
+                                            correo_destino_p = str(df_correo_p.iloc[0]['correo']).strip()
+                                    conn_p.close()
+                                except: pass
+
                                 c1_comp, c2_comp = st.columns(2)
                                 
-                                # 1. BOTÓN DE DESCARGA (Vale de Salida HTML)
+                                # 1. BOTÓN DE DESCARGA (Vale de Salida HTML - FIRMA ÚNICA)
                                 html_vale = f"""
                                 <html>
                                 <body style="font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: auto;">
@@ -1374,7 +1387,6 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                                     <table style="width: 100%; text-align: center; margin-top: 40px; font-size: 16px;">
                                         <tr>
                                             <td>___________________________<br>Firma Despachador (Taller)</td>
-                                            <td>___________________________<br>Firma Chofer / Receptor</td>
                                         </tr>
                                     </table>
                                 </body>
@@ -1389,17 +1401,17 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                                         type="primary",
                                         use_container_width=True
                                     )
-                                    st.caption("💡 Haz doble clic en el archivo descargado para abrirlo en tu navegador y presiona **Ctrl + P** para guardarlo como PDF o imprimirlo.")
+                                    st.caption("💡 Haz doble clic en el archivo descargado para abrirlo y presiona **Ctrl + P** para guardarlo como PDF o imprimirlo.")
                                 
-                                # 2. BOTÓN DE CORREO (Aviso específico de esta carga)
+                                # 2. BOTÓN DE CORREO (Aviso específico con destinatario automático)
                                 with c2_comp:
                                     asunto_p = f"Aviso de Despacho Parcial - Pedido N° {num_ped_p} - Obra {obra_ped_p}"
-                                    cuerpo_p = f"Estimados,\n\nJunto con saludar, informamos que se ha despachado un viaje parcial correspondiente a su Pedido N° {num_ped_p} (Obra: {obra_ped_p}).\n\nDETALLE DE ESTE CAMIÓN:\n- Kilos de esta entrega: {fila_comp['kilos']} Kg.\n- Detalle de piezas: {fila_comp['comentario']}\n\n- Total Acumulado en Obra a la fecha: {kilos_acumulados:.1f} Kg.\n\nFavor revisar la carga al momento de la recepción física.\n\nSaludos cordiales,\nDepartamento de Producción - Termofrio SPA"
+                                    cuerpo_p = f"Estimados,\n\nJunto con saludar, informamos que se ha despachado un viaje parcial correspondiente a su Pedido N° {num_ped_p} (Obra: {obra_ped_p}).\n\nDETALLE DE ESTE CAMIÓN:\n- Kilos de esta entrega: {fila_comp['kilos']} Kg.\n- Detalle de piezas: {fila_comp['comentario']}\n\n- Total Acumulado en Obra a la fecha: {kilos_acumulados:.1f} Kg.\n\nFavor revisar la carga al momento de la recepción física y recordar adjuntar el vale de salida a este correo como respaldo.\n\nSaludos cordiales,\nDepartamento de Producción - Termofrio SPA"
                                     
                                     import urllib.parse
                                     subj_p_enc = urllib.parse.quote(asunto_p)
                                     body_p_enc = urllib.parse.quote(cuerpo_p)
-                                    mailto_p = f"mailto:?subject={subj_p_enc}&body={body_p_enc}"
+                                    mailto_p = f"mailto:{correo_destino_p}?subject={subj_p_enc}&body={body_p_enc}"
                                     
                                     boton_html_p = f"""
                                     <a href="{mailto_p}" style="text-decoration: none;">
@@ -1409,7 +1421,12 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                                     </a>
                                     """
                                     st.markdown(boton_html_p, unsafe_allow_html=True)
-                                    st.caption("💡 Abre el borrador para avisarle al solicitante lo que va en este viaje exacto.")
+                                    
+                                    if correo_destino_p:
+                                        st.success(f"✅ Se enviará a: {correo_destino_p}")
+                                    else:
+                                        st.warning("⚠️ No se encontró el correo del solicitante.")
+                                    st.caption("💡 Abre el borrador para enviar. **Debes adjuntar manualmente** el vale descargado.")
 
                     except Exception as e: 
                         st.error(f"Error cargando historial: {e}")
