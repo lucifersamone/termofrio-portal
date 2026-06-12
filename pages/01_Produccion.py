@@ -1113,89 +1113,203 @@ with tab2:
                     st.warning("💡 *Planilla física no alojada en caché (Se puede construir PDF desde Base de Datos).*")
 
         with col_right:
-            st.markdown("##### 🚀 Transformación a PDF")
-            if st.button("📄 Generar PDF (Timbre y Firma)", key="btn_pdf_timbrado_v4", type="primary"):
-                if fila_ped is None:
-                    st.error("❌ No hay ningún pedido seleccionado.")
-                else:
-                    with st.spinner("Generando PDF oficial de despacho..."):
-                        try:
-                            ruta_ex = str(fila_ped.get('ruta_excel', '')).strip()
-                            if ruta_ex in ['None', 'nan', '']: ruta_ex = ""
-                            fuente_pedido = str(fila_ped.get('fuente', '')).strip().lower()
-                            es_masiva = ruta_ex.endswith(('.xlsx', '.xls', '.xlsm')) or "excel" in fuente_pedido or "masiva" in fuente_pedido
+            st.markdown("##### 🚀 Transformación a Visor Rápido 🔗")
+            st.info("⚡ Optimizado: No consume recursos del servidor.")
 
-                            df_para_pdf = pd.DataFrame()
+            if fila_ped is None:
+                st.error("❌ No hay ningún pedido seleccionado.")
+            else:
+                # 1. MANTENEMOS TU CÓDIGO ORIGINAL PARA EXTRAER LAS PIEZAS (Excel o Manual)
+                ruta_ex = str(fila_ped.get('ruta_excel', '')).strip()
+                if ruta_ex in ['None', 'nan', '']: ruta_ex = ""
+                fuente_pedido = str(fila_ped.get('fuente', '')).strip().lower()
+                es_masiva = ruta_ex.endswith(('.xlsx', '.xls', '.xlsm')) or "excel" in fuente_pedido or "masiva" in fuente_pedido
 
-                            if es_masiva and ruta_ex and os.path.exists(ruta_ex):
-                                df_raw = pd.read_excel(ruta_ex, header=None)
-                                start_row = 28
-                                for idx, row_vals in df_raw.iterrows():
-                                    if str(row_vals[0]).strip().upper() == "Nº" or "DESCRIPCION" in str(row_vals[5]).strip().upper():
-                                        start_row = idx + 1
-                                        break
-                                
-                                clean_rows = []
-                                for idx in range(start_row, len(df_raw)):
-                                    r_val = df_raw.iloc[idx]
-                                    item_id = r_val[0]
-                                    if pd.isna(item_id) or str(item_id).strip() == "": continue
-                                    
-                                    tipo_pieza = str(r_val[5]).strip()
-                                    val_a = str(r_val[9]).strip() if pd.notna(r_val[9]) else ""
-                                    val_b = str(r_val[10]).strip() if pd.notna(r_val[10]) else ""
-                                    val_h = str(r_val[18]).strip() if pd.notna(r_val[18]) else ""
-                                    val_ue = str(r_val[26]).strip() if pd.notna(r_val[26]) else ""
-                                    val_us = str(r_val[28]).strip() if pd.notna(r_val[28]) else ""
-                                    
-                                    dims = []
-                                    if val_a: dims.append(f"A:{val_a}cm")
-                                    if val_b: dims.append(f"B:{val_b}cm")
-                                    if val_h: dims.append(f"H:{val_h}")
-                                    
-                                    parts = []
-                                    if dims: parts.append("Dim: " + " ".join(dims))
-                                    if val_ue or val_us: parts.append(f"Unión: {val_ue} / {val_us}".strip(" /"))
-                                    detalles_finales_str = " | ".join(parts)
-                                    
-                                    clean_rows.append({
-                                        'item_numero': str(item_id).strip(),
-                                        'descripcion': tipo_pieza,
-                                        'detalles': detalles_finales_str,
-                                        'cantidad': r_val[8] if pd.notna(r_val[8]) else 1,
-                                        'espesor': r_val[31] if pd.notna(r_val[31]) else 0.5,
-                                        'peso_total': r_val[33] if pd.notna(r_val[33]) else 0.0
-                                    })
-                                df_para_pdf = pd.DataFrame(clean_rows)
+                df_para_pdf = pd.DataFrame()
 
-                            if df_para_pdf.empty:
-                                if not df_items_raw.empty:
-                                    df_para_pdf = df_items_raw.copy()
-                                    if 'item_numero' not in df_para_pdf.columns and 'item_num' in df_para_pdf.columns:
-                                        df_para_pdf['item_numero'] = df_para_pdf['item_num']
-                                else:
-                                    st.error("❌ No se encontraron registros de piezas para este pedido.")
-                                    st.stop()
-
-                            ruta_pdf_final = generar_pdf_cliente(
-                                pedido_num=fila_ped['num_pedido'],
-                                tf=fila_ped['tf'],
-                                obra=fila_ped['obra_codigo'],
-                                ceco=fila_ped['ceco'],
-                                solicitante=fila_ped['quien_envia'],
-                                items_df=df_para_pdf, 
-                                kg_est=fila_ped['kg_estimados'],
-                                observaciones=obs_txt,
-                                men=men_txt
-                            )
+                if es_masiva and ruta_ex and os.path.exists(ruta_ex):
+                    try:
+                        df_raw = pd.read_excel(ruta_ex, header=None)
+                        start_row = 28
+                        for idx, row_vals in df_raw.iterrows():
+                            if str(row_vals[0]).strip().upper() == "Nº" or "DESCRIPCION" in str(row_vals[5]).strip().upper():
+                                start_row = idx + 1
+                                break
+                        
+                        clean_rows = []
+                        for idx in range(start_row, len(df_raw)):
+                            r_val = df_raw.iloc[idx]
+                            item_id = r_val[0]
+                            if pd.isna(item_id) or str(item_id).strip() == "": continue
                             
-                            if ruta_pdf_final and os.path.exists(ruta_pdf_final):
-                                with open(ruta_pdf_final, "rb") as f:
-                                    st.download_button("📥 Descargar PDF Terminado (Timbrado)", f, file_name=f"Pedido_Despacho_OT-{fila_ped['num_pedido']}.pdf", key="dl_pdf_final_perfecto_v4")
-                            else:
-                                st.error("❌ Ocurrió un inconveniente al empaquetar el archivo PDF definitivo.")
-                        except Exception as e:
-                            st.error(f"Error procesando la transformación del documento: {e}")
+                            tipo_pieza = str(r_val[5]).strip()
+                            val_a = str(r_val[9]).strip() if pd.notna(r_val[9]) else ""
+                            val_b = str(r_val[10]).strip() if pd.notna(r_val[10]) else ""
+                            val_h = str(r_val[18]).strip() if pd.notna(r_val[18]) else ""
+                            val_ue = str(r_val[26]).strip() if pd.notna(r_val[26]) else ""
+                            val_us = str(r_val[28]).strip() if pd.notna(r_val[28]) else ""
+                            
+                            dims = []
+                            if val_a: dims.append(f"A:{val_a}cm")
+                            if val_b: dims.append(f"B:{val_b}cm")
+                            if val_h: dims.append(f"H:{val_h}")
+                            
+                            parts = []
+                            if dims: parts.append("Dim: " + " ".join(dims))
+                            if val_ue or val_us: parts.append(f"Unión: {val_ue} / {val_us}".strip(" /"))
+                            detalles_finales_str = " | ".join(parts)
+                            
+                            clean_rows.append({
+                                'item_numero': str(item_id).strip(),
+                                'descripcion': tipo_pieza,
+                                'detalles': detalles_finales_str,
+                                'cantidad': r_val[8] if pd.notna(r_val[8]) else 1,
+                                'espesor': r_val[31] if pd.notna(r_val[31]) else 0.5,
+                                'peso_total': r_val[33] if pd.notna(r_val[33]) else 0.0
+                            })
+                        df_para_pdf = pd.DataFrame(clean_rows)
+                    except Exception as e:
+                        pass # Si el excel falla silenciosamente, usará la base de datos
+
+                # Si no era masiva, usamos las piezas de la base de datos
+                if df_para_pdf.empty:
+                    if 'df_items_raw' in locals() and not df_items_raw.empty:
+                        df_para_pdf = df_items_raw.copy()
+                        if 'item_numero' not in df_para_pdf.columns and 'item_num' in df_para_pdf.columns:
+                            df_para_pdf['item_numero'] = df_para_pdf['item_num']
+                
+                # 2. GENERACIÓN DEL VISOR HTML (A LA VELOCIDAD DE LA LUZ)
+                import base64
+                import os
+
+                def get_b64(ruta):
+                    if not os.path.exists(ruta):
+                        ruta_base = os.path.splitext(ruta)[0]
+                        for ext in ['.jpg', '.JPG', '.png', '.PNG', '.jpeg', '.JPEG']:
+                            if os.path.exists(ruta_base + ext):
+                                ruta = ruta_base + ext
+                                break
+                    if os.path.exists(ruta):
+                        with open(ruta, "rb") as f:
+                            ext = ruta.split('.')[-1].lower()
+                            mime = f"image/{ext}" if ext in ['png', 'jpg', 'jpeg'] else "image/jpeg"
+                            return f"data:{mime};base64,{base64.b64encode(f.read()).decode('utf-8')}"
+                    return None
+
+                src_logo = get_b64("firma_timbre/termofriologo.JPG")
+                src_iso = get_b64("firma_timbre/tfiso.JPG")
+                src_timbre = get_b64("firma_timbre/timbre")
+
+                html_logo = f'<img src="{src_logo}" style="height: 60px;">' if src_logo else '<h1 style="color:#1a4a75; margin:0;">TERMOFRIO SPA</h1>'
+                html_iso = f'<img src="{src_iso}" style="height: 60px;">' if src_iso else ''
+                html_timbre = f'<img src="{src_timbre}" style="max-width: 250px;">' if src_timbre else '<div style="display:inline-block; border:3px solid #1a4a75; padding:20px 40px; border-radius:10px; color:#1a4a75; font-weight:bold;">TIMBRE TALLER TERMOFRIO</div>'
+
+                filas_html = ""
+                if not df_para_pdf.empty:
+                    for _, row in df_para_pdf.iterrows():
+                        desc = str(row.get('descripcion', '')).replace('nan', '')
+                        det = str(row.get('detalles', '')).replace('nan', '')
+                        filas_html += f"""
+                        <tr>
+                            <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('item_numero', '')}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{desc}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('cantidad', '')}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{det}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('peso_total', '')}</td>
+                        </tr>
+                        """
+                else:
+                    filas_html = '<tr><td colspan="5" style="text-align:center; padding:10px;">No hay piezas registradas</td></tr>'
+
+                num_ped_limpio = str(fila_ped['num_pedido']).strip().upper().replace("OT-", "").replace("OT", "")
+                obra_limpia = str(fila_ped['obra_codigo']).replace('/', '-').replace('\\', '-')
+                titulo_pdf = f"Orden_Fabricacion_OT-{num_ped_limpio}_{obra_limpia}"
+
+                html_taller = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <title>{titulo_pdf}</title>
+                    <style>
+                        body {{ font-family: Arial, sans-serif; padding: 20px; max-width: 900px; margin: auto; }}
+                        @media print {{
+                            .no-imprimir {{ display: none !important; }}
+                            @page {{ margin: 0.5cm; }}
+                        }}
+                        .btn-magico {{ background-color: #ff4b4b; color: white; padding: 15px 30px; border: none; border-radius: 8px; font-size: 18px; cursor: pointer; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-weight: bold; }}
+                        .btn-magico:hover {{ background-color: #e03e3e; }}
+                        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }}
+                        th {{ background-color: #1a4a75; color: white; padding: 10px; border: 1px solid #ddd; }}
+                        .header-container {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }}
+                        .header-center {{ flex: 2; text-align: center; }}
+                        .header-side {{ flex: 1; }}
+                        .header-right {{ text-align: right; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="no-imprimir" style="text-align: center; margin-bottom: 30px; background-color: #fff3f3; padding: 20px; border-radius: 10px; border: 2px dashed #ff4b4b;">
+                        <h3 style="margin-top:0; color:#333;">🏭 Orden de Fabricación para Taller</h3>
+                        <p style="color:#666;">Documento con timbre y logotipos incrustados. Haz clic en el botón rojo para imprimir o guardar.</p>
+                        <button class="btn-magico" onclick="window.print()">🖨️ Imprimir / Guardar PDF Oficial</button>
+                    </div>
+
+                    <div id="documento-oficial">
+                        <div class="header-container">
+                            <div class="header-side">{html_logo}</div>
+                            <div class="header-center">
+                                <h3 style="color: #555; margin: 0;">Orden de Fabricación</h3>
+                                <p style="margin: 5px 0 0 0; color: #777;">Documento Oficial de Taller</p>
+                            </div>
+                            <div class="header-side header-right">{html_iso}</div>
+                        </div>
+                        
+                        <hr style="border: 1px solid #ccc; margin: 20px 0;">
+                        
+                        <table style="width: 100%; margin-bottom: 20px; font-size: 16px; border:none;">
+                            <tr>
+                                <td style="border:none;"><strong>Pedido N°:</strong> {fila_ped['num_pedido']}</td>
+                                <td style="border:none; text-align: right;"><strong>Kilos Reales:</strong> {fila_ped.get('kg_reales', '0')} Kg</td>
+                            </tr>
+                            <tr>
+                                <td style="border:none; padding-top: 10px;"><strong>Obra:</strong> {fila_ped['obra_codigo']}</td>
+                                <td style="border:none; padding-top: 10px; text-align: right;"><strong>Solicitante:</strong> {fila_ped.get('quien_envia', 'N/A')}</td>
+                            </tr>
+                        </table>
+                        
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Ítem</th>
+                                    <th>Descripción</th>
+                                    <th>Cant.</th>
+                                    <th>Dimensiones / Detalles</th>
+                                    <th>Peso (Kg)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filas_html}
+                            </tbody>
+                        </table>
+                        
+                        <br><br><br>
+                        <div style="text-align: center; margin-top: 40px;">
+                            {html_timbre}
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """
+
+                st.download_button(
+                    label="📄 Descargar Visor de Fabricación (Taller)",
+                    data=html_taller,
+                    file_name=f"{titulo_pdf}.html",
+                    mime="text/html",
+                    type="primary",
+                    use_container_width=True
+                )
+                st.caption("💡 Aparecerá en las descargas de tu navegador: **dale un solo clic ahí para abrirlo** en una nueva pestaña al instante.")
 
         st.subheader("🚀 Fila de Producción y Urgencias")
         pend_fifo = dfp[dfp['estado']=='Pendiente'].copy()
