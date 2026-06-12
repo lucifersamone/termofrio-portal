@@ -750,20 +750,136 @@ if st.session_state.rol == "cliente":
                                 'item_numero': 'Ítem', 'descripcion': 'Pieza', 'detalles': 'Especificaciones', 'cantidad': 'Cant.', 'espesor': 'Esp. (mm)', 'peso_total': 'Kg Est.'
                             })
                             st.dataframe(df_items_display, use_container_width=True, hide_index=True)
-                            
-                            if st.button("📄 Descargar Comprobante PDF", key="btn_comprobante"):
-                                with st.spinner("Generando documento..."):
-                                    ruta_pdf = generar_pdf_cliente(
-                                        pedido_num=fila_ped['num_pedido'], tf=fila_ped['tf'], obra=fila_ped['obra_codigo'], ceco=fila_ped['ceco'], solicitante=fila_ped['quien_envia'],
-                                        items_df=df_items_raw, kg_est=fila_ped['kg_estimados'], observaciones=obs_txt, men=men_txt
-                                    )
-                                    if ruta_pdf:
-                                        with open(ruta_pdf, "rb") as f:
-                                            st.download_button("📥 Guardar en mi equipo", f, file_name=f"Comprobante_{fila_ped['num_pedido']}.pdf")
-                        else: st.info("Sin detalle de piezas.")
+                            # ⚡ MODO SUPERVISORES: Visor HTML Ultrarrápido (Reemplaza el antiguo generador PDF)
+            import base64
+            import os
+
+            def get_b64(ruta):
+                if not os.path.exists(ruta):
+                    ruta_base = os.path.splitext(ruta)[0]
+                    for ext in ['.jpg', '.JPG', '.png', '.PNG', '.jpeg', '.JPEG']:
+                        if os.path.exists(ruta_base + ext):
+                            ruta = ruta_base + ext
+                            break
+                if os.path.exists(ruta):
+                    with open(ruta, "rb") as f:
+                        ext = ruta.split('.')[-1].lower()
+                        mime = f"image/{ext}" if ext in ['png', 'jpg', 'jpeg'] else "image/jpeg"
+                        return f"data:{mime};base64,{base64.b64encode(f.read()).decode('utf-8')}"
+                return None
+
+            src_logo = get_b64("firma_timbre/termofriologo.JPG")
+            src_iso = get_b64("firma_timbre/tfiso.JPG")
+
+            html_logo = f'<img src="{src_logo}" style="height: 60px;">' if src_logo else '<h1 style="color:#1a4a75; margin:0;">TERMOFRIO SPA</h1>'
+            html_iso = f'<img src="{src_iso}" style="height: 60px;">' if src_iso else ''
+
+            filas_html = ""
+            for _, row in df_items_raw.iterrows():
+                desc = str(row.get('descripcion', '')).replace('nan', '')
+                det = str(row.get('detalles', '')).replace('nan', '')
+                filas_html += f"""
+                <tr>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('item_numero', '')}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{desc}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('cantidad', '')}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{det}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('peso_total', '')}</td>
+                </tr>
+                """
+
+            num_ped_limpio = str(fila_ped['num_pedido']).strip().upper().replace("OT-", "").replace("OT", "")
+            obra_limpia = str(fila_ped['obra_codigo']).replace('/', '-').replace('\\', '-')
+            titulo_pdf = f"Comprobante OT-{num_ped_limpio} {obra_limpia}"
+
+            html_cliente = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>{titulo_pdf}</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; padding: 20px; max-width: 900px; margin: auto; }}
+                    @media print {{
+                        .no-imprimir {{ display: none !important; }}
+                        @page {{ margin: 0.5cm; }}
+                    }}
+                    .btn-magico {{ background-color: #1a4a75; color: white; padding: 15px 30px; border: none; border-radius: 8px; font-size: 18px; cursor: pointer; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
+                    .btn-magico:hover {{ background-color: #123555; }}
+                    table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }}
+                    th {{ background-color: #1a4a75; color: white; padding: 10px; border: 1px solid #ddd; }}
+                    .header-container {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }}
+                    .header-center {{ flex: 2; text-align: center; }}
+                    .header-side {{ flex: 1; }}
+                    .header-right {{ text-align: right; }}
+                </style>
+            </head>
+            <body>
+                <div class="no-imprimir" style="text-align: center; margin-bottom: 30px; background-color: #f0f2f6; padding: 20px; border-radius: 10px;">
+                    <h3 style="margin-top:0; color:#333;">📄 Visor de Solicitud de Pedido</h3>
+                    <p style="color:#666;">Haz clic abajo para guardar tu respaldo definitivo.</p>
+                    <button class="btn-magico" onclick="window.print()">🖨️ Guardar como PDF / Imprimir</button>
+                </div>
+
+                <div id="documento-oficial">
+                    <div class="header-container">
+                        <div class="header-side">{html_logo}</div>
+                        <div class="header-center">
+                            <h3 style="color: #555; margin: 0;">Comprobante de Solicitud de Pedido</h3>
+                            <p style="margin: 5px 0 0 0; color: #777;">Copia Supervisor / Cliente</p>
+                        </div>
+                        <div class="header-side header-right">{html_iso}</div>
+                    </div>
+                    
+                    <hr style="border: 1px solid #ccc; margin: 20px 0;">
+                    
+                    <table style="width: 100%; margin-bottom: 20px; font-size: 16px; border:none;">
+                        <tr>
+                            <td style="border:none;"><strong>Pedido N°:</strong> {fila_ped['num_pedido']}</td>
+                            <td style="border:none; text-align: right;"><strong>Kilos Estimados:</strong> {fila_ped.get('kg_estimados', '0')} Kg</td>
+                        </tr>
+                        <tr>
+                            <td style="border:none; padding-top: 10px;"><strong>Obra:</strong> {fila_ped['obra_codigo']}</td>
+                            <td style="border:none; padding-top: 10px; text-align: right;"><strong>Solicitante:</strong> {fila_ped.get('quien_envia', 'N/A')}</td>
+                        </tr>
+                    </table>
+                    
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Ítem</th>
+                                <th>Descripción</th>
+                                <th>Cant.</th>
+                                <th>Dimensiones / Detalles</th>
+                                <th>Peso (Kg)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filas_html}
+                        </tbody>
+                    </table>
+                    <br><br>
+                    <div style="text-align: center; margin-top: 50px;">
+                        <p>_____________________________________</p>
+                        <p style="color: #555; font-weight: bold;">Firma Solicitante / V°B°</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+
+            st.download_button(
+                label="⬇️ Descargar Visor del Comprobante",
+                data=html_cliente,
+                file_name=f"{titulo_pdf}.html",
+                mime="text/html",
+                type="primary",
+                use_container_width=True
+            )
+            st.caption("💡 Haz clic para descargar el archivo. Luego ábrelo y presiona el botón azul para guardarlo como PDF.")
                 
-                df_pendientes = df_mis_pedidos[df_mis_pedidos['Estado'] == 'Pendiente'].copy()
-                if not df_pendientes.empty:
+            df_pendientes = df_mis_pedidos[df_mis_pedidos['Estado'] == 'Pendiente'].copy()
+            if not df_pendientes.empty:
                     st.divider()
                     st.markdown("#### 🗑️ Anular Pedido")
                     col_del1, col_del2 = st.columns([3, 1])
