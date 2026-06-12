@@ -1198,11 +1198,9 @@ with tab2:
 
                 src_logo = get_b64("firma_timbre/termofriologo.JPG")
                 src_iso = get_b64("firma_timbre/tfiso.JPG")
-                src_timbre = get_b64("firma_timbre/timbre")
 
                 html_logo = f'<img src="{src_logo}" style="height: 60px;">' if src_logo else '<h1 style="color:#1a4a75; margin:0;">TERMOFRIO SPA</h1>'
                 html_iso = f'<img src="{src_iso}" style="height: 60px;">' if src_iso else ''
-                html_timbre = f'<img src="{src_timbre}" style="max-width: 250px;">' if src_timbre else '<div style="display:inline-block; border:3px solid #1a4a75; padding:20px 40px; border-radius:10px; color:#1a4a75; font-weight:bold;">TIMBRE TALLER TERMOFRIO</div>'
 
                 filas_html = ""
                 if not df_para_pdf.empty:
@@ -1250,7 +1248,7 @@ with tab2:
                 <body>
                     <div class="no-imprimir" style="text-align: center; margin-bottom: 30px; background-color: #fff3f3; padding: 20px; border-radius: 10px; border: 2px dashed #ff4b4b;">
                         <h3 style="margin-top:0; color:#333;">🏭 Orden de Fabricación para Taller</h3>
-                        <p style="color:#666;">Documento con timbre y logotipos incrustados. Haz clic en el botón rojo para imprimir o guardar.</p>
+                        <p style="color:#666;">Documento con logotipos incrustados. Haz clic en el botón rojo para imprimir o guardar.</p>
                         <button class="btn-magico" onclick="window.print()">🖨️ Imprimir / Guardar PDF Oficial</button>
                     </div>
 
@@ -1293,9 +1291,6 @@ with tab2:
                         </table>
                         
                         <br><br><br>
-                        <div style="text-align: center; margin-top: 40px;">
-                            {html_timbre}
-                        </div>
                     </div>
                 </body>
                 </html>
