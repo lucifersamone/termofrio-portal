@@ -1668,20 +1668,21 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                     obra_ped = str(st.session_state.get('pdf_obra', '')).replace('/', '-').replace('\\', '-')
                     nombre_archivo_final = f"Pedido OT-{num_ped} {obra_ped}"
 
-                    # 📥 SECCIÓN DE DESCARGA (Inteligente para PDF o HTML)
-            with open(st.session_state.pdf_tmp, "rb") as f:
-                if st.session_state.get("es_excel", False):
-                    ext = os.path.splitext(st.session_state.pdf_tmp)[1]
-                    if not ext == ".xlsm":
-                        st.download_button("📄 Descargar PDF Oficial de Excel", f, file_name=f"{nombre_archivo_final}{ext}", key="btn_dl_excel", type="primary")
-                else:
-                    # Detectamos si lo que se generó fue el nuevo Visor HTML o un PDF antiguo
-                    ext_manual = os.path.splitext(st.session_state.pdf_tmp)[1]
-                    if ext_manual.lower() == ".html":
-                        st.download_button("⬇️ Descargar Visor del Comprobante", f, file_name=f"{nombre_archivo_final}.html", mime="text/html", key="btn_dl_pdf", type="primary")
-                        st.caption("💡 Abre el archivo descargado y presiona el botón azul gigante para guardarlo como PDF definitivo.")
+                    # 📥 SECCIÓN DE DESCARGA (Inteligente para PDF o HTML con escudo protector)
+            if 'pdf_tmp' in st.session_state and st.session_state.pdf_tmp and os.path.exists(st.session_state.pdf_tmp):
+                with open(st.session_state.pdf_tmp, "rb") as f:
+                    if st.session_state.get("es_excel", False):
+                        ext = os.path.splitext(st.session_state.pdf_tmp)[1]
+                        if not ext == ".xlsm":
+                            st.download_button("📄 Descargar PDF Oficial de Excel", f, file_name=f"{nombre_archivo_final}{ext}", key="btn_dl_excel", type="primary")
                     else:
-                        st.download_button("📄 Descargar PDF Oficial", f, file_name=f"{nombre_archivo_final}.pdf", key="btn_dl_pdf", type="primary")
+                        # Detectamos si lo que se generó fue el nuevo Visor HTML o un PDF antiguo
+                        ext_manual = os.path.splitext(st.session_state.pdf_tmp)[1]
+                        if ext_manual.lower() == ".html":
+                            st.download_button("⬇️ Descargar Visor del Comprobante", f, file_name=f"{nombre_archivo_final}.html", mime="text/html", key="btn_dl_pdf", type="primary")
+                            st.caption("💡 Abre el archivo descargado y presiona el botón azul gigante para guardarlo como PDF definitivo.")
+                        else:
+                            st.download_button("📄 Descargar PDF Oficial", f, file_name=f"{nombre_archivo_final}.pdf", key="btn_dl_pdf", type="primary")
                     
                     # 📬 SECCIÓN DE CORREO (Renombrada para no chocar con los PASOS)
                     st.markdown("---")
