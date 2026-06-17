@@ -2079,10 +2079,18 @@ with tab3:
                     if n_sol and c_sol:
                         try:
                             conn=get_connection(); c=conn.cursor()
-                            query_sol = "INSERT INTO directorio_solicitantes (nombre, correo) VALUES (%s, %s) ON CONFLICT (nombre) DO UPDATE SET correo = EXCLUDED.correo"
-                            c.execute(query_sol, (n_sol.strip(), c_sol.strip()))
+                            
+                            # 🚀 TRUCO: Calculamos el próximo ID para el directorio
+                            c.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM directorio_solicitantes")
+                            nuevo_id_sol = int(c.fetchone()[0])
+                            
+                            # Insertamos con el nuevo ID, manteniendo tu regla de actualización si el nombre ya existe
+                            query_sol = "INSERT INTO directorio_solicitantes (id, nombre, correo) VALUES (%s, %s, %s) ON CONFLICT (nombre) DO UPDATE SET correo = EXCLUDED.correo"
+                            c.execute(query_sol, (nuevo_id_sol, n_sol.strip(), c_sol.strip()))
+                            
                             conn.commit(); conn.close(); st.success("Guardado."); st.rerun()
-                        except Exception as e: st.error(e)
+                        except Exception as e: 
+                            st.error(e)
         with col_dir2:
             conn = get_connection()
             try: df_dir = pd.read_sql("SELECT nombre, correo FROM directorio_solicitantes", conn)
