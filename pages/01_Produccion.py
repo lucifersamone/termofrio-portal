@@ -2045,7 +2045,14 @@ with tab3:
                     if n_tf and n_nom:
                         try:
                             conn=get_connection(); c=conn.cursor()
-                            c.execute("INSERT INTO maestro_obras (tf, ceco, nombre) VALUES (%s, %s, %s)", (n_tf.strip(), n_ceco.strip(), n_nom.strip()))
+                            
+                            # 🚀 TRUCO: Calculamos el próximo ID manualmente para evitar el error
+                            c.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM maestro_obras")
+                            nuevo_id = int(c.fetchone()[0])
+                            
+                            # Insertamos enviando el ID generado
+                            c.execute("INSERT INTO maestro_obras (id, tf, ceco, nombre) VALUES (%s, %s, %s, %s)", (nuevo_id, n_tf.strip(), n_ceco.strip(), n_nom.strip()))
+                            
                             conn.commit(); conn.close(); st.success("Guardado."); st.rerun()
                         except Exception as e: st.error(e)
                     else:
