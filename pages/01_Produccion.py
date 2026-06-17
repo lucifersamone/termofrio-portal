@@ -2080,13 +2080,19 @@ with tab3:
                         try:
                             conn=get_connection(); c=conn.cursor()
                             
-                            # 🚀 TRUCO: Calculamos el próximo ID para el directorio
-                            c.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM directorio_solicitantes")
-                            nuevo_id_sol = int(c.fetchone()[0])
+                            # 1. Python busca si el solicitante ya existe en la base de datos
+                            c.execute("SELECT id FROM directorio_solicitantes WHERE nombre = %s", (n_sol.strip(),))
+                            resultado = c.fetchone()
                             
-                            # Insertamos con el nuevo ID, manteniendo tu regla de actualización si el nombre ya existe
-                            query_sol = "INSERT INTO directorio_solicitantes (id, nombre, correo) VALUES (%s, %s, %s) ON CONFLICT (nombre) DO UPDATE SET correo = EXCLUDED.correo"
-                            c.execute(query_sol, (nuevo_id_sol, n_sol.strip(), c_sol.strip()))
+                            if resultado:
+                                # Si existe, tomamos su ID y solo le actualizamos el correo
+                                id_existente = resultado[0]
+                                c.execute("UPDATE directorio_solicitantes SET correo = %s WHERE id = %s", (c_sol.strip(), id_existente))
+                            else:
+                                # Si NO existe, calculamos el nuevo ID mágico y lo insertamos
+                                c.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM directorio_solicitantes")
+                                nuevo_id_sol = int(c.fetchone()[0])
+                                c.execute("INSERT INTO directorio_solicitantes (id, nombre, correo) VALUES (%s, %s, %s)", (nuevo_id_sol, n_sol.strip(), c_sol.strip()))
                             
                             conn.commit(); conn.close(); st.success("Guardado."); st.rerun()
                         except Exception as e: 
