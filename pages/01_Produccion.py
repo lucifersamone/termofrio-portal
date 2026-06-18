@@ -1463,19 +1463,19 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                                 opciones_borrar = df_mostrar['id'].astype(str) + " | Fecha: " + df_mostrar['fecha_str'] + " | " + df_mostrar['kilos'].astype(str) + " Kg"
                                 parc_seleccionada = st.selectbox("Selecciona el envío que deseas eliminar:", opciones_borrar)
                         
-                        if st.button("🚨 Eliminar Envío Seleccionado"):
-                            id_borrar = parc_seleccionada.split(" | ")[0].strip()
-                            try:
-                                conn_del = get_connection()
-                                c_del = conn_del.cursor()
-                                # ⚠️ Borramos directamente de la tabla entregas_parciales
-                                c_del.execute(f"DELETE FROM entregas_parciales WHERE id={int(id_borrar)}")
-                                conn_del.commit()
-                                conn_del.close()
-                                st.success("✅ ¡Envío anulado! Los kilos se han descontado del total.")
-                                st.rerun() # Refresca la pantalla mágicamente
-                            except Exception as e:
-                                st.error(f"Error al intentar borrar: {e}")
+                                if st.button("🚨 Eliminar Envío Seleccionado"):
+                                    id_borrar = parc_seleccionada.split(" | ")[0].strip()
+                                    try:
+                                        conn_del = get_connection()
+                                        c_del = conn_del.cursor()
+                                        # ⚠️ Borramos directamente de la tabla entregas_parciales
+                                        c_del.execute(f"DELETE FROM entregas_parciales WHERE id={int(id_borrar)}")
+                                        conn_del.commit()
+                                        conn_del.close()
+                                        st.success("✅ ¡Envío anulado! Los kilos se han descontado del total.")
+                                        st.rerun() # Refresca la pantalla mágicamente
+                                    except Exception as e:
+                                        st.error(f"Error al intentar borrar: {e}")
 
                             # --- 📄 SECCIÓN DE COMPROBANTES ---
                             st.markdown("---")
