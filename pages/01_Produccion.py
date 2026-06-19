@@ -1415,7 +1415,7 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                         comentario_parcial = st.text_input("Detalle de piezas (Ej: 50 ductos rectos, 2 curvas)")
 
                         if st.form_submit_button("Guardar Salida Parcial"):
-                            if kilos_parcial > 0 and comentario_parcial:
+                            if kilos_parcial >= 0 and comentario_parcial:
                                 from datetime import timedelta
                                 
                                 conn=get_connection(); c=conn.cursor()
