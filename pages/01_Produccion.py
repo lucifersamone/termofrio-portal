@@ -2222,7 +2222,12 @@ with tab4:
                     df_p.loc[~mask_un, 'total_linea'] *= factor
                     df_ajustado = pd.concat([df_ajustado, df_p])
         res = []
-
+    # 🛟 SALVAVIDAS: Si la tabla no se creó en el bloque superior, la generamos vacía aquí
+try:
+    df_ajustado
+except NameError:
+    import pandas as pd
+    df_ajustado = pd.DataFrame()
     mapeo_columnas = {}
     if not df_ajustado.empty:
         for col in df_ajustado.columns:
