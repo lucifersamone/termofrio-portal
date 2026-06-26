@@ -963,31 +963,39 @@ with t_manual:
                         
                         pid = c.lastrowid # ID del pedido creado
 
-                        # 3. Guardar Ítems
+                        # 3. Guardar Ítems (Con Contador Dinámico)
+                        # Buscamos el ID más alto ANTES de entrar al ciclo
+                        c.execute("SELECT COALESCE(MAX(id), 0) FROM items_pedido")
+                        ultimo_id_item = int(c.fetchone()[0])
+                        
+                        # Agregamos la columna 'id' al principio y un '%s' extra
                         query_insert_item_manual = """
                         INSERT INTO items_pedido 
-                        (pedido_id, item_numero, descripcion, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio, detalles) 
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        (id, pedido_id, item_numero, descripcion, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio, detalles)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """
 
                         for r in st.session_state.carrito_admin:
+                            ultimo_id_item += 1  # 🚀 EL TRUCO: Sumamos 1 al ID en cada vuelta del ciclo
+                            
                             detalles_manuales = str(r.get('Detalles/Medidas', r.get('detalles', ''))).strip()
                             if detalles_manuales in ['None', 'nan', '']: detalles_manuales = ""
-
-                            # 🔥 ¡ESTO AHORA ESTÁ DENTRO DEL BUCLE FOR!
+                            
+                            # 🔥 Ejecutamos inyectando el ID generado como primer parámetro
                             c.execute(query_insert_item_manual, (
-                                pid, 
-                                str(r['item_num']), 
-                                str(r['Descripción']), 
-                                int(r['Cantidad']),        
-                                float(r['Kg']),            
-                                float(r['Espesor']),       
-                                str(r['material']), 
-                                str(r['unidad_cobro']), 
-                                float(r['precio_unitario']), 
-                                float(r['total_linea']), 
+                                ultimo_id_item, 
+                                pid,
+                                str(r['item_num']),
+                                str(r['Descripción']),
+                                int(r['Cantidad']),
+                                float(r['Kg']),
+                                float(r['Espesor']),
+                                str(r['material']),
+                                str(r['unidad_cobro']),
+                                float(r['precio_unitario']),
+                                float(r['total_linea']),
                                 str(r['origen_precio']),
-                                detalles_manuales          
+                                detalles_manuales
                             ))
 
                         conn.commit()
