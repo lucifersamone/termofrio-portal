@@ -1036,54 +1036,76 @@ with tab2:
         df_items_raw = pd.DataFrame()
 
         # =========================================================
-        # ✏️ NUEVO: PANEL PARA EDITAR/CORREGIR PEDIDOS
+        # 🛠️ NUEVO: PANEL PARA EDITAR PIEZAS/ESPECIFICACIONES
         # =========================================================
-        st.markdown("---")
-        with st.expander("✏️ ¿Te equivocaste en el nombre u OT? Haz clic aquí para corregir un pedido"):
-            # Usamos dfp, que es tu dataframe principal en esta pestaña
+        with st.expander("🛠️ ¿Te equivocaste en las medidas o cantidades? Editar piezas del pedido"):
+            # Usamos la misma lista desplegable de pedidos
+            # Generamos la lista de pedidos combinando la OT y la Obra
             opciones_editar = dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'].astype(str)
-            pedido_seleccionado = st.selectbox("Selecciona el pedido que deseas corregir:", opciones_editar, key="sel_editar_pedido")
+            pedido_sel_piezas = st.selectbox("Selecciona el pedido para editar sus piezas:", opciones_editar, key="sel_editar_piezas")
             
-            if pedido_seleccionado:
-                # Extraemos el número de pedido exacto (ej: "OT-8")
-                num_ped_editar = pedido_seleccionado.split(" / ")[0].strip()
+            if pedido_sel_piezas:
+                num_ped_piezas = pedido_sel_piezas.split(" / ")[0].strip()
                 
-                # Buscamos los datos actuales en tu dfp para pre-rellenar
-                datos_actuales = dfp[dfp['num_pedido'] == num_ped_editar].iloc[0]
+                # 1. Necesitamos el ID interno del pedido para buscar sus piezas
+                # Como tu dataframe dfp ya tiene la columna 'id', lo sacamos de ahí
+                id_pedido_interno = int(dfp[dfp['num_pedido'] == num_ped_piezas].iloc[0]['id'])
                 
-                with st.form("form_editar_pedido"):
-                    st.info("Modifica los textos que necesites y presiona Guardar Cambios.")
+                # 2. Vamos a la base de datos a buscar SOLO las piezas de este pedido
+                try:
+                    conn_piezas = get_connection()
+                    # Seleccionamos solo las columnas que tiene sentido editar para no marear al usuario
+                    query_traer_piezas = f"SELECT id, descripcion, cantidad, peso_total, espesor, detalles FROM items_pedido WHERE pedido_id = {id_pedido_interno} ORDER BY id"
+                    df_piezas_actuales = pd.read_sql(query_traer_piezas, conn_piezas)
+                    conn_piezas.close()
                     
-                    # El truco del "value=": precarga lo que ya está en la base de datos
-                    tf_actual = str(datos_actuales['tf']) if str(datos_actuales['tf']) != 'None' else ""
-                    
-                    nuevo_num_pedido = st.text_input("Número de Pedido (OT)", value=str(datos_actuales['num_pedido']))
-                    nuevo_tf = st.text_input("Código TF", value=tf_actual)
-                    nuevo_codigo_obra = st.text_input("Nombre de la Obra", value=str(datos_actuales['obra_codigo']))
-                    
-                    if st.form_submit_button("💾 Guardar Cambios", type="primary"):
-                        try:
-                            conn_edit = get_connection()
-                            c_edit = conn_edit.cursor()
+                    if df_piezas_actuales.empty:
+                        st.warning("⚠️ Este pedido no tiene piezas registradas (probablemente fue afectado por el error anterior de guardado).")
+                    else:
+                        st.info("💡 **Instrucciones:** Haz doble clic en cualquier celda de la tabla para modificar su valor (como en Excel). Luego presiona el botón Guardar.")
+                        
+                        # 3. LA MAGIA: st.data_editor convierte el dataframe en una tabla editable
+                        # Bloqueamos la columna 'id' para que el usuario no pueda romper la relación de la base de datos
+                        df_piezas_modificadas = st.data_editor(
+                            df_piezas_actuales, 
+                            disabled=["id"], 
+                            use_container_width=True,
+                            hide_index=True,
+                            key=f"editor_piezas_{id_pedido_interno}"
+                        )
+                        
+                        # 4. Guardamos los cambios
+                        if st.button("💾 Guardar Cambios en las Piezas", type="primary"):
+                            conn_upd = get_connection()
+                            c_upd = conn_upd.cursor()
                             
-                            # Actualizamos solo la fila que coincide con la OT original
-                            query_update = """
-                                UPDATE pedidos 
-                                SET num_pedido = %s, tf = %s, obra_codigo = %s 
-                                WHERE num_pedido = %s
-                            """
-                            c_edit.execute(query_update, (nuevo_num_pedido.strip(), nuevo_tf.strip(), nuevo_codigo_obra.strip(), num_ped_editar))
+                            # Recorremos la tabla que el usuario acaba de editar en pantalla
+                            for index, fila in df_piezas_modificadas.iterrows():
+                                query_actualizar_pieza = """
+                                    UPDATE items_pedido 
+                                    SET descripcion = %s, cantidad = %s, peso_total = %s, espesor = %s, detalles = %s
+                                    WHERE id = %s
+                                """
+                                # Inyectamos los nuevos valores. El int() y float() aseguran que no explote si el usuario escribe mal un número
+                                c_upd.execute(query_actualizar_pieza, (
+                                    str(fila['descripcion']).strip(),
+                                    int(fila['cantidad']), 
+                                    float(fila['peso_total']), 
+                                    float(fila['espesor']), 
+                                    str(fila['detalles']).strip(), 
+                                    int(fila['id'])
+                                ))
+                                
+                            conn_upd.commit()
+                            conn_upd.close()
                             
-                            conn_edit.commit()
-                            conn_edit.close()
-                            
-                            st.success("✅ ¡Pedido actualizado correctamente! Recargando...")
+                            st.success("✅ ¡Especificaciones actualizadas correctamente en la base de datos!")
                             import time
-                            time.sleep(1) # Una pequeña pausa para que el usuario alcance a leer el éxito
+                            time.sleep(1.5) # Pausa dramática para que lean el mensaje
                             st.rerun()
                             
-                        except Exception as e:
-                            st.error(f"Error al actualizar: {e}")
+                except Exception as e:
+                    st.error(f"Error al cargar o guardar las piezas: {e}")
         st.markdown("---")
         # =========================================================
 
