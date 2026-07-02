@@ -1263,9 +1263,39 @@ if st.session_state.rol == "cliente":
                          (numero_oficial, tf_final, obra_final, ceco_final, st.session_state.nombre_usuario, fuente_guardado, datetime.now(), flim.date(), neto_total_carrito, peso_total_carrito, 0, 0, 'Pendiente', 'En Proceso', 'Normal', "Generado Manualmente", comentarios_manual, men_manual))
                 pid = c.lastrowid
 
-                for r in st.session_state.carrito_cliente:
-                    c.execute("INSERT INTO items_pedido (pedido_id, item_numero, descripcion, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio, detalles) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                             (pid, r['item_num'], r['Descripción'], r['Cantidad'], r['Kg'], r['Espesor'], r['material'], r['unidad_cobro'], r['precio_unitario'], r['total_linea'], r['origen_precio'], r['Detalles/Medidas']))
+                # 🚀 Calculamos el ID más alto antes de guardar las piezas del supervisor
+            c.execute("SELECT COALESCE(MAX(id), 0) FROM items_pedido")
+            ultimo_id_item = int(c.fetchone()[0])
+            
+            query_items_cliente = """
+            INSERT INTO items_pedido 
+            (id, pedido_id, item_numero, descripcion, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio, detalles)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+
+            for r in st.session_state.carrito_cliente:
+                ultimo_id_item += 1  # Le sumamos 1 al ID en cada pieza
+                
+                # Extraemos los detalles por si el supervisor escribió algo
+                detalles_sup = str(r.get('Detalles/Medidas', r.get('detalles', ''))).strip()
+                if detalles_sup in ['None', 'nan', '']: detalles_sup = ""
+                
+                # Guardamos la pieza inyectando el ID generado
+                c.execute(query_items_cliente, (
+                    ultimo_id_item, 
+                    pid, 
+                    r['item_num'], 
+                    r['Descripción'], 
+                    r['Cantidad'], 
+                    r['Kg'], 
+                    r['Espesor'], 
+                    r['material'], 
+                    r['unidad_cobro'], 
+                    r['precio_unitario'], 
+                    r['total_linea'], 
+                    r.get('origen_precio', ''), 
+                    detalles_sup
+                ))
                 
                 conn.commit(); conn.close()
                 st.session_state.carrito_cliente = [] 
