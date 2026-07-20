@@ -2304,28 +2304,11 @@ with tab4:
                     df_p.loc[~mask_un, 'total_linea'] *= factor
                     df_ajustado = pd.concat([df_ajustado, df_p])
         res = []
-    # 🛟 SALVAVIDAS: Si la tabla no se creó en el bloque superior, la generamos vacía aquí
-try:
-    _ = df_ajustado
-except NameError:
-    import pandas as pd
-    df_ajustado = pd.DataFrame()
-    mapeo_columnas = {}
-    if not df_ajustado.empty:
-        for col in df_ajustado.columns:
-            col_limpia = str(col).strip().lower()
-            if col_limpia in ['ceco', 'centro de costo', 'centro de costos', 'centro costo', 'centro costos', 'cc', 'c.c.', 'n° ceco']: mapeo_columnas[col] = 'ceco'
-            elif col_limpia in ['obra_codigo', 'obra_cod', 'obra', 'obra código', 'código obra', 'codigo obra', 'cod_obra', 'cod. obra', 'n° obra']: mapeo_columnas[col] = 'obra_codigo'
-            elif col_limpia in ['tipo_edp', 'tipo edp', 'tipo']: mapeo_columnas[col] = 'TIPO_EDP'
-            elif col_limpia in ['peso_total', 'pesototal', 'peso total', 'kg', 'kilogramos', 'peso']: mapeo_columnas[col] = 'peso_total'
-            elif col_limpia in ['total_linea', 'totallinea', 'total_línea', 'total linea', 'total línea', 'total']: mapeo_columnas[col] = 'total_linea'
-
-        df_ajustado.rename(columns=mapeo_columnas, inplace=True)
-
-        # =========================================================
+    # =========================================================
         # 📊 TABLA EDP LISTA PARA EXCEL (Orden Estricto)
         # =========================================================
         if 'df_ajustado' in locals() and not df_ajustado.empty:
+            st.markdown("---")
             st.markdown("### 📑 Tabla de Datos Consolidados (Lista para Excel)")
             st.info("💡 Haz clic en la primera celda del CECO, arrastra hasta el último valor a la derecha, presiona **Ctrl+C** y pega en tu planilla.")
             
@@ -2359,7 +2342,7 @@ except NameError:
             if res_edp:
                 df_excel = pd.DataFrame(res_edp)
                 
-                # ¡LA MAGIA DEL ORDEN! Aquí le dictamos a Python exactamente cómo quieres las columnas
+                # ¡LA MAGIA DEL ORDEN! Aquí dictamos el orden idéntico a tu Excel
                 orden_estricto = [
                     "CECO", "OBRA", 
                     "GALVANIZADO KG", "GALVANIZADO VALOR $", 
@@ -2372,7 +2355,7 @@ except NameError:
                 # Borramos los ceros para dejar las celdas en blanco como en tu imagen
                 df_excel = df_excel.replace(0, "")
                 
-                # Mostramos la tabla
+                # Mostramos la tabla desplegada al máximo de la pantalla
                 st.dataframe(df_excel, use_container_width=True, hide_index=True)
                             
         st.divider()
