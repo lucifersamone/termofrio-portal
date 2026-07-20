@@ -2340,6 +2340,8 @@ with tab4:
     # =========================================================
         # 📊 TABLA EDP LISTA PARA EXCEL (Orden Estricto)
         # =========================================================
+        try: df_ajustado
+        except NameError: df_ajustado = pd.DataFrame()
         if not df_ajustado.empty:
             st.markdown("---")
             st.markdown("### 📑 Tabla de Datos Consolidados (Lista para Excel)")
