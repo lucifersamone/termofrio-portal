@@ -2322,37 +2322,58 @@ except NameError:
 
         df_ajustado.rename(columns=mapeo_columnas, inplace=True)
 
-        columnas_actuales = df_ajustado.columns.tolist()
-        if 'ceco' not in columnas_actuales or 'obra_codigo' not in columnas_actuales:
-            st.error("⚠️ **Error en los encabezados:** Faltan las columnas necesarias de 'CECO' o 'Obra'.")
-            st.info(f"**Columnas detectadas:** {columnas_actuales}")
-        else:
-            for (ceco, obra), g in df_ajustado.groupby(['ceco', 'obra_codigo']):
-                    res.append({
-                        "CECO": ceco,
-                        "OBRA": obra,
-                        "GALVANIZADO KG": round(g[g['TIPO_EDP'] == 'GALV']['peso_total'].sum(), 1) if not g[g['TIPO_EDP'] == 'GALV'].empty else 0,
-                        "GALVANIZADO VALOR $": round(g[g['TIPO_EDP'] == 'GALV']['total_linea'].sum(), 0) if not g[g['TIPO_EDP'] == 'GALV'].empty else 0,
-                        "FE KG": round(g[g['TIPO_EDP'] == 'FE']['peso_total'].sum(), 1) if not g[g['TIPO_EDP'] == 'FE'].empty else 0,
-                        "FE VALOR $": round(g[g['TIPO_EDP'] == 'FE']['total_linea'].sum(), 0) if not g[g['TIPO_EDP'] == 'FE'].empty else 0,
-                        "INOX KG": round(g[g['TIPO_EDP'] == 'INOX']['peso_total'].sum(), 1) if not g[g['TIPO_EDP'] == 'INOX'].empty else 0,
-                        "INOX VALOR $": round(g[g['TIPO_EDP'] == 'INOX']['total_linea'].sum(), 0) if not g[g['TIPO_EDP'] == 'INOX'].empty else 0,
-                        "GALVANIZADO ESPECIAL KG": round(g[g['TIPO_EDP'] == 'GALV_ESP']['peso_total'].sum(), 1) if not g[g['TIPO_EDP'] == 'GALV_ESP'].empty else 0,
-                        "GALVANIZADO ESPECIAL VALOR $": round(g[g['TIPO_EDP'] == 'GALV_ESP']['total_linea'].sum(), 0) if not g[g['TIPO_EDP'] == 'GALV_ESP'].empty else 0,
-                    })
-                    
-                    df_edp_final = pd.DataFrame(res)
-                        
-                    if not df_edp_final.empty:
-                            # Convertimos los ceros a celdas vacías para que quede igual que el Excel
-                            df_edp_final = df_edp_final.replace(0, "")
-                            
-                            st.write("### 📑 Tabla de Datos (Lista para Excel)")
-                            st.info("💡 Solo haz clic en el primer CECO, arrastra hasta el último valor, presiona Ctrl+C y pega directo en tu planilla.")
-                            st.dataframe(df_edp_final, use_container_width=True, hide_index=True)
-                            
-                            # Dejamos el botón por si algún día prefieres descargar el archivo
-                            st.download_button("💾 Descargar CSV para Excel", df_edp_final.to_csv(index=False).encode('utf-8-sig'), "EDP_Periodo.csv", "text/csv")
+        # =========================================================
+        # 📊 TABLA EDP LISTA PARA EXCEL (Orden Estricto)
+        # =========================================================
+        if 'df_ajustado' in locals() and not df_ajustado.empty:
+            st.markdown("### 📑 Tabla de Datos Consolidados (Lista para Excel)")
+            st.info("💡 Haz clic en la primera celda del CECO, arrastra hasta el último valor a la derecha, presiona **Ctrl+C** y pega en tu planilla.")
+            
+            # 1. Asegurar columnas clave de forma robusta
+            col_ceco = 'ceco' if 'ceco' in df_ajustado.columns else ('centro de costo' if 'centro de costo' in df_ajustado.columns else None)
+            col_obra = 'obra_codigo' if 'obra_codigo' in df_ajustado.columns else ('obra' if 'obra' in df_ajustado.columns else None)
+            
+            if not col_ceco: df_ajustado['ceco'] = "S/C"; col_ceco = 'ceco'
+            if not col_obra: df_ajustado['obra_codigo'] = "S/O"; col_obra = 'obra_codigo'
+            
+            df_ajustado[col_ceco] = df_ajustado[col_ceco].fillna("S/C")
+            df_ajustado[col_obra] = df_ajustado[col_obra].fillna("S/O")
+            
+            # 2. Agrupar y calcular sumas
+            res_edp = []
+            for (val_ceco, val_obra), g in df_ajustado.groupby([col_ceco, col_obra]):
+                res_edp.append({
+                    "CECO": val_ceco,
+                    "OBRA": val_obra,
+                    "GALVANIZADO KG": round(g[g['TIPO_EDP'] == 'GALV']['peso_total'].sum(), 1) if not g[g['TIPO_EDP'] == 'GALV'].empty else 0,
+                    "GALVANIZADO VALOR $": round(g[g['TIPO_EDP'] == 'GALV']['total_linea'].sum(), 0) if not g[g['TIPO_EDP'] == 'GALV'].empty else 0,
+                    "FE KG": round(g[g['TIPO_EDP'] == 'FE']['peso_total'].sum(), 1) if not g[g['TIPO_EDP'] == 'FE'].empty else 0,
+                    "FE VALOR $": round(g[g['TIPO_EDP'] == 'FE']['total_linea'].sum(), 0) if not g[g['TIPO_EDP'] == 'FE'].empty else 0,
+                    "INOX KG": round(g[g['TIPO_EDP'] == 'INOX']['peso_total'].sum(), 1) if not g[g['TIPO_EDP'] == 'INOX'].empty else 0,
+                    "INOX VALOR $": round(g[g['TIPO_EDP'] == 'INOX']['total_linea'].sum(), 0) if not g[g['TIPO_EDP'] == 'INOX'].empty else 0,
+                    "GALVANIZADO ESPECIAL KG": round(g[g['TIPO_EDP'] == 'GALV_ESP']['peso_total'].sum(), 1) if not g[g['TIPO_EDP'] == 'GALV_ESP'].empty else 0,
+                    "GALVANIZADO ESPECIAL VALOR $": round(g[g['TIPO_EDP'] == 'GALV_ESP']['total_linea'].sum(), 0) if not g[g['TIPO_EDP'] == 'GALV_ESP'].empty else 0,
+                })
+            
+            # 3. Forzar el orden exacto para Excel y limpiar ceros
+            if res_edp:
+                df_excel = pd.DataFrame(res_edp)
+                
+                # ¡LA MAGIA DEL ORDEN! Aquí le dictamos a Python exactamente cómo quieres las columnas
+                orden_estricto = [
+                    "CECO", "OBRA", 
+                    "GALVANIZADO KG", "GALVANIZADO VALOR $", 
+                    "FE KG", "FE VALOR $", 
+                    "INOX KG", "INOX VALOR $", 
+                    "GALVANIZADO ESPECIAL KG", "GALVANIZADO ESPECIAL VALOR $"
+                ]
+                df_excel = df_excel[orden_estricto]
+                
+                # Borramos los ceros para dejar las celdas en blanco como en tu imagen
+                df_excel = df_excel.replace(0, "")
+                
+                # Mostramos la tabla
+                st.dataframe(df_excel, use_container_width=True, hide_index=True)
                             
         st.divider()
         st.markdown("### 🧊 Calculadora de Bono por Aislación Interior")
