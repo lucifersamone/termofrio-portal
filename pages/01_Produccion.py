@@ -2385,6 +2385,61 @@ except NameError:
 
     else:
         st.warning("No se encontraron pedidos con los filtros seleccionados.")
+# ==========================================
+        # 📊 GENERADOR DE TABLA PARA EXCEL (EDP)
+        # ==========================================
+        st.markdown("---")
+        st.subheader("📑 Generador de Tabla Formato Excel")
+        st.info("💡 Haz clic aquí para generar la tabla agrupada por CECO y Obra lista para copiar.")
+        
+        if st.button("Generar Tabla EDP Excel", type="primary", key="btn_generar_edp_excel"):
+            try:
+                conn_edp = get_connection()
+                df_p_excel = pd.read_sql("SELECT id, ceco, obra_codigo FROM pedidos", conn_edp)
+                df_i_excel = pd.read_sql("SELECT pedido_id, material, peso_total, total_linea FROM items_pedido", conn_edp)
+                conn_edp.close()
+                
+                if not df_p_excel.empty and not df_i_excel.empty:
+                    df_mix = pd.merge(df_i_excel, df_p_excel, left_on="pedido_id", right_on="id", how="left")
+                    df_mix['ceco'] = df_mix['ceco'].fillna("S/C")
+                    df_mix['obra_codigo'] = df_mix['obra_codigo'].fillna("S/O")
+                    
+                    def clasificar_mat(m):
+                        m_str = str(m).upper()
+                        if 'ESP' in m_str: return 'GALV_ESP'
+                        elif 'GALV' in m_str: return 'GALV'
+                        elif 'FE' in m_str or 'FIERRO' in m_str: return 'FE'
+                        elif 'INOX' in m_str: return 'INOX'
+                        return 'OTROS'
+                        
+                    df_mix['TIPO_EDP'] = df_mix['material'].apply(clasificar_mat)
+                    
+                    res_edp = []
+                    for (ceco, obra), g in df_mix.groupby(['ceco', 'obra_codigo']):
+                        res_edp.append({
+                            "CECO": ceco,
+                            "OBRA": obra,
+                            "GALVANIZADO KG": round(g[g['TIPO_EDP'] == 'GALV']['peso_total'].sum(), 1) if not g[g['TIPO_EDP'] == 'GALV'].empty else 0,
+                            "GALVANIZADO VALOR $": round(g[g['TIPO_EDP'] == 'GALV']['total_linea'].sum(), 0) if not g[g['TIPO_EDP'] == 'GALV'].empty else 0,
+                            "FE KG": round(g[g['TIPO_EDP'] == 'FE']['peso_total'].sum(), 1) if not g[g['TIPO_EDP'] == 'FE'].empty else 0,
+                            "FE VALOR $": round(g[g['TIPO_EDP'] == 'FE']['total_linea'].sum(), 0) if not g[g['TIPO_EDP'] == 'FE'].empty else 0,
+                            "INOX KG": round(g[g['TIPO_EDP'] == 'INOX']['peso_total'].sum(), 1) if not g[g['TIPO_EDP'] == 'INOX'].empty else 0,
+                            "INOX VALOR $": round(g[g['TIPO_EDP'] == 'INOX']['total_linea'].sum(), 0) if not g[g['TIPO_EDP'] == 'INOX'].empty else 0,
+                            "GALVANIZADO ESPECIAL KG": round(g[g['TIPO_EDP'] == 'GALV_ESP']['peso_total'].sum(), 1) if not g[g['TIPO_EDP'] == 'GALV_ESP'].empty else 0,
+                            "GALVANIZADO ESPECIAL VALOR $": round(g[g['TIPO_EDP'] == 'GALV_ESP']['total_linea'].sum(), 0) if not g[g['TIPO_EDP'] == 'GALV_ESP'].empty else 0,
+                        })
+                        
+                    df_final = pd.DataFrame(res_edp)
+                    # Convertimos los ceros en espacios en blanco para imitar tu Excel
+                    df_final = df_final.replace(0, "")
+                    st.dataframe(df_final, hide_index=True, use_container_width=True)
+                    
+                else:
+                    st.warning("No hay datos para generar el EDP.")
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+
 
 with tab5:
     st.header("📈 Dashboard de Producción")
