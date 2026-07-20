@@ -2014,10 +2014,10 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                         
                         # Devolvemos el estado a 'En Proceso' o 'Pendiente' y borramos la fecha de término
                         c_reabrir.execute("""
-                            UPDATE pedidos 
-                            SET estado = 'En Proceso', fecha_termino = NULL 
-                            WHERE num_pedido = %s
-                        """, (ot_reabrir,))
+                        UPDATE pedidos 
+                        SET estado = 'Pendiente', fecha_termino = NULL 
+                        WHERE num_pedido = %s
+                    """, (ot_reabrir,))
                         
                         conn_reabrir.commit()
                         conn_reabrir.close()
