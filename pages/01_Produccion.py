@@ -1995,6 +1995,39 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                 c.execute("DELETE FROM pedidos WHERE id=%s",(idd,))
                 conn.commit();conn.close();st.rerun()
 
+                st.divider()
+        st.markdown("### 🔓 Herramienta de Administrador: Reabrir Pedido")
+        st.info("¿Cerraste un pedido por error? Ingresa el número de OT para devolverlo a estado 'En Proceso'.")
+        
+        col_r1, col_r2 = st.columns([1, 2])
+        with col_r1:
+            ot_reabrir = st.text_input("N° de Pedido (Ej: OT-109)").strip().upper()
+            
+        with col_r2:
+            st.write("") # Espacio para alinear el botón
+            st.write("")
+            if st.button("Reabrir Pedido", type="primary", key="btn_reabrir_emergencia"):
+                if ot_reabrir:
+                    try:
+                        conn_reabrir = get_connection()
+                        c_reabrir = conn_reabrir.cursor()
+                        
+                        # Devolvemos el estado a 'En Proceso' o 'Pendiente' y borramos la fecha de término
+                        c_reabrir.execute("""
+                            UPDATE pedidos 
+                            SET estado = 'En Proceso', fecha_termino = NULL 
+                            WHERE num_pedido = %s
+                        """, (ot_reabrir,))
+                        
+                        conn_reabrir.commit()
+                        conn_reabrir.close()
+                        
+                        st.success(f"✅ ¡El pedido {ot_reabrir} ha sido reabierto exitosamente! Actualiza la página para ver los cambios.")
+                    except Exception as e:
+                        st.error(f"Error al intentar reabrir: {e}")
+                else:
+                    st.warning("Por favor, ingresa un número de pedido.")
+
 # --- PESTAÑA 3: CONFIGURACIÓN Y MAESTROS ---
 with tab3:
     st.header("⚙️ Configuración y Maestros")
