@@ -2307,7 +2307,7 @@ with tab4:
     # =========================================================
         # 📊 TABLA EDP LISTA PARA EXCEL (Orden Estricto)
         # =========================================================
-        if 'df_ajustado' in locals() and not df_ajustado.empty:
+        if not df_ajustado.empty:
             st.markdown("---")
             st.markdown("### 📑 Tabla de Datos Consolidados (Lista para Excel)")
             st.info("💡 Haz clic en la primera celda del CECO, arrastra hasta el último valor a la derecha, presiona **Ctrl+C** y pega en tu planilla.")
@@ -2342,7 +2342,7 @@ with tab4:
             if res_edp:
                 df_excel = pd.DataFrame(res_edp)
                 
-                # ¡LA MAGIA DEL ORDEN! Aquí dictamos el orden idéntico a tu Excel
+                # ¡LA MAGIA DEL ORDEN!
                 orden_estricto = [
                     "CECO", "OBRA", 
                     "GALVANIZADO KG", "GALVANIZADO VALOR $", 
@@ -2350,13 +2350,22 @@ with tab4:
                     "INOX KG", "INOX VALOR $", 
                     "GALVANIZADO ESPECIAL KG", "GALVANIZADO ESPECIAL VALOR $"
                 ]
+                
+                # Seguro extra: Si por algún motivo falta una columna, la crea vacía para no dar error
+                for col_name in orden_estricto:
+                    if col_name not in df_excel.columns:
+                        df_excel[col_name] = 0
+                        
                 df_excel = df_excel[orden_estricto]
                 
                 # Borramos los ceros para dejar las celdas en blanco como en tu imagen
                 df_excel = df_excel.replace(0, "")
                 
-                # Mostramos la tabla desplegada al máximo de la pantalla
+                # Mostramos la tabla
                 st.dataframe(df_excel, use_container_width=True, hide_index=True)
+        else:
+            # 🚨 SI ALGO FALLA, ESTO TE AVISARÁ POR PANTALLA EN LUGAR DE QUEDAR EN BLANCO
+            st.warning("⚠️ El sistema intentó procesar la tabla, pero no encontró piezas compatibles para generar el EDP.")
                             
         st.divider()
         st.markdown("### 🧊 Calculadora de Bono por Aislación Interior")
