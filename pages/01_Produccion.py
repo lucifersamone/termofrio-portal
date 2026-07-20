@@ -2297,8 +2297,8 @@ with tab4:
                 for pid in df_full['pedido_id'].unique():
                     df_p = df_full[df_full['pedido_id'] == pid].copy()
                     kg_r = df_p.iloc[0]['kg_reales']; kg_e = df_p.iloc[0]['kg_estimados']
-                    if kg_r < 1: kg_r = kg_e
-                    factor = kg_r / kg_e if kg_r > 0 and kg_e > 0 else 1.0
+                    # if kg_r < 1: kg_r = kg_e
+                    factor = kg_r / kg_e if kg_r > 0 and kg_e > 0 else 0.0
                     mask_un = df_p['unidad_cobro'].str.lower() == 'un'
                     df_p.loc[~mask_un, 'peso_total'] *= factor
                     df_p.loc[~mask_un, 'total_linea'] *= factor
