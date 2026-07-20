@@ -2309,7 +2309,7 @@ try:
     df_ajustado
 except NameError:
     import pandas as pd
-    df_ajustado = pd.DataFrame()
+    #df_ajustado = pd.DataFrame()
     mapeo_columnas = {}
     if not df_ajustado.empty:
         for col in df_ajustado.columns:
@@ -2328,29 +2328,31 @@ except NameError:
             st.info(f"**Columnas detectadas:** {columnas_actuales}")
         else:
             for (ceco, obra), g in df_ajustado.groupby(['ceco', 'obra_codigo']):
-                res.append({
-                    "CECO": ceco, "OBRA": obra,
-                    "KG_GALV": round(g[g['TIPO_EDP']=='GALV']['peso_total'].sum(), 1), "$ GALV": round(g[g['TIPO_EDP']=='GALV']['total_linea'].sum(), 0),
-                    "KG_FE": round(g[g['TIPO_EDP']=='FE']['peso_total'].sum(), 1), "$ FE": round(g[g['TIPO_EDP']=='FE']['total_linea'].sum(), 0),
-                    "KG_ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['peso_total'].sum(), 1), "$ ESP": round(g[g['TIPO_EDP']=='GALV_ESP']['total_linea'].sum(), 0),
-                    "KG_INOX": round(g[g['TIPO_EDP']=='INOX']['peso_total'].sum(), 1), "$ INOX": round(g[g['TIPO_EDP']=='INOX']['total_linea'].sum(), 0) # 🔑 COLUMNA INOX DETECTADA
-                })
-
-            df_edp_final = pd.DataFrame(res)
-            if not df_edp_final.empty:
-                # Agregamos los totales de Inox también al cierre de la tabla
-                totales = pd.DataFrame([{
-                    "CECO": "TOTALES", "OBRA": "---", 
-                    "KG_GALV": df_edp_final["KG_GALV"].sum(), "$ GALV": df_edp_final["$ GALV"].sum(), 
-                    "KG_FE": df_edp_final["KG_FE"].sum(), "$ FE": df_edp_final["$ FE"].sum(), 
-                    "KG_ESP": df_edp_final["KG_ESP"].sum(), "$ ESP": df_edp_final["$ ESP"].sum(),
-                    "KG_INOX": df_edp_final["KG_INOX"].sum(), "$ INOX": df_edp_final["$ INOX"].sum() # 🔑 TOTAL INOX
-                }])
-                df_edp_final = pd.concat([df_edp_final, totales], ignore_index=True)
-                
-                st.write("### Tabla de Datos (Selecciona y copia directamente)")
-                st.dataframe(df_edp_final, use_container_width=True, hide_index=True)
-                st.download_button("📥 Descargar CSV para Excel", df_edp_final.to_csv(index=False).encode('utf-8-sig'), "EDP_Periodo.csv", "text/csv")
+                    res.append({
+                        "CECO": ceco,
+                        "OBRA": obra,
+                        "GALVANIZADO KG": round(g[g['TIPO_EDP'] == 'GALV']['peso_total'].sum(), 1) if not g[g['TIPO_EDP'] == 'GALV'].empty else 0,
+                        "GALVANIZADO VALOR $": round(g[g['TIPO_EDP'] == 'GALV']['total_linea'].sum(), 0) if not g[g['TIPO_EDP'] == 'GALV'].empty else 0,
+                        "FE KG": round(g[g['TIPO_EDP'] == 'FE']['peso_total'].sum(), 1) if not g[g['TIPO_EDP'] == 'FE'].empty else 0,
+                        "FE VALOR $": round(g[g['TIPO_EDP'] == 'FE']['total_linea'].sum(), 0) if not g[g['TIPO_EDP'] == 'FE'].empty else 0,
+                        "INOX KG": round(g[g['TIPO_EDP'] == 'INOX']['peso_total'].sum(), 1) if not g[g['TIPO_EDP'] == 'INOX'].empty else 0,
+                        "INOX VALOR $": round(g[g['TIPO_EDP'] == 'INOX']['total_linea'].sum(), 0) if not g[g['TIPO_EDP'] == 'INOX'].empty else 0,
+                        "GALVANIZADO ESPECIAL KG": round(g[g['TIPO_EDP'] == 'GALV_ESP']['peso_total'].sum(), 1) if not g[g['TIPO_EDP'] == 'GALV_ESP'].empty else 0,
+                        "GALVANIZADO ESPECIAL VALOR $": round(g[g['TIPO_EDP'] == 'GALV_ESP']['total_linea'].sum(), 0) if not g[g['TIPO_EDP'] == 'GALV_ESP'].empty else 0,
+                    })
+                    
+                    df_edp_final = pd.DataFrame(res)
+                        
+                    if not df_edp_final.empty:
+                            # Convertimos los ceros a celdas vacías para que quede igual que el Excel
+                            df_edp_final = df_edp_final.replace(0, "")
+                            
+                            st.write("### 📑 Tabla de Datos (Lista para Excel)")
+                            st.info("💡 Solo haz clic en el primer CECO, arrastra hasta el último valor, presiona Ctrl+C y pega directo en tu planilla.")
+                            st.dataframe(df_edp_final, use_container_width=True, hide_index=True)
+                            
+                            # Dejamos el botón por si algún día prefieres descargar el archivo
+                            st.download_button("💾 Descargar CSV para Excel", df_edp_final.to_csv(index=False).encode('utf-8-sig'), "EDP_Periodo.csv", "text/csv")
                             
         st.divider()
         st.markdown("### 🧊 Calculadora de Bono por Aislación Interior")
