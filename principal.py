@@ -265,8 +265,16 @@ USUARIOS = {
         "tf": ["13784", "13817"], 
         "ceco": ["2-12-023", "2-12-024"],
         "obra": ["TF – 13784 ACHS EDIFICIO B PROVIDENCIA", "TF-13817 ACHS - EDIFICIO K1 PISO 1 - EDIFICIO C"]
-    },
     
+    },
+        "rmunoz": {
+            "clave": "1234", "rol": "cliente", "nombre": "Roberto Muñoz",
+            "correo": "rmunoz@termofrio.cl", 
+            "tf": ["13618"], 
+            "ceco": ["2-12-022"],
+            "obra": ["TF- 13618 NORMAILIZACION HOSPITAL CURACAUTIN"]
+        },
+
     "cbustos": {"clave": "1234", "rol": "cliente", "nombre": "Cristian Bustos", "correo": "cristian.bustos@ejemplo.cl"},
     "jguzman": {"clave": "1234", "rol": "cliente", "nombre": "Joel Guzman", "correo": "jguzman@termofrio.cl"},
     "pramirez": {"clave": "1234", "rol": "cliente", "nombre": "Paulo Ramirez", "correo": "pramirez@termofrio.cl"},
@@ -276,6 +284,7 @@ USUARIOS = {
     "falvarez": {"clave": "1234", "rol": "cliente", "nombre": "Francisco Alvarez", "correo": "falvarez@termofrio.cl"},
     "adiaz": {"clave": "1234", "rol": "cliente", "nombre": "Ariel Diaz", "correo": "adiaza@termofrio.cl"},
     "amarin": {"clave": "1234", "rol": "cliente", "nombre": "Axel Marin", "correo": "amarin@termofrio.cl"},
+    "rmunoz": {"clave": "1234", "rol": "cliente", "nombre": "Roberto Muñoz", "correo": "rmunoz@termofrio.cl"},
 }
 
 LISTA_DESCRIPCIONES = [
