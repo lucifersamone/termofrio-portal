@@ -680,12 +680,19 @@ with tab1:
                     else:
                         pid = c.lastrowid  # El adaptador guardó el ID en secreto aquí
                     
+                    # 🚀 TRUCO: Buscamos el ID más alto ANTES de guardar los ítems del Excel
+                    c.execute("SELECT COALESCE(MAX(id), 0) FROM items_pedido")
+                    ultimo_id_item = int(c.fetchone()[0])
+                    
                     query_item = """INSERT INTO items_pedido 
-                    (pedido_id, item_numero, descripcion, detalles, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+                    (id, pedido_id, item_numero, descripcion, detalles, cantidad, peso_total, espesor, material, unidad_cobro, precio_unitario, total_linea, origen_precio) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
                     
                     for _, r in edited_df.iterrows():
+                        ultimo_id_item += 1  # 🚀 Sumamos 1 al ID en cada pieza nueva
+                        
                         c.execute(query_item, (
+                            ultimo_id_item, # <-- Inyectamos el ID generado aquí
                             pid, str(r['item_num']).strip(), str(r['descripcion']).strip(), "", int(r['cantidad']),
                             float(r['peso_total']), float(r['espesor']), str(r['material']).strip(), str(r['unidad_cobro']).strip(),
                             float(r['precio_unitario']), float(r['total_linea']), str(r['origen_precio']).strip()
