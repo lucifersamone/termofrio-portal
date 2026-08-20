@@ -1062,7 +1062,7 @@ with tab2:
                 try:
                     conn_piezas = get_connection()
                     # Seleccionamos solo las columnas que tiene sentido editar para no marear al usuario
-                    query_traer_piezas = f"SELECT id, descripcion, cantidad, peso_total, espesor, detalles FROM items_pedido WHERE pedido_id = {id_pedido_interno} ORDER BY id"
+                    query_traer_piezas = f"SELECT id, descripcion, material, cantidad, peso_total, espesor, detalles FROM items_pedido WHERE pedido_id = {id_pedido_interno} ORDER BY id"
                     df_piezas_actuales = pd.read_sql(query_traer_piezas, conn_piezas)
                     conn_piezas.close()
                     
@@ -1090,15 +1090,17 @@ with tab2:
                             for index, fila in df_piezas_modificadas.iterrows():
                                 query_actualizar_pieza = """
                                     UPDATE items_pedido 
-                                    SET descripcion = %s, cantidad = %s, peso_total = %s, espesor = %s, detalles = %s
+                                    SET descripcion = %s, material = %s, cantidad = %s, peso_total = %s, espesor = %s, detalles = %s
                                     WHERE id = %s
                                 """
                                 # Inyectamos los nuevos valores. El int() y float() aseguran que no explote si el usuario escribe mal un número
                                 c_upd.execute(query_actualizar_pieza, (
                                     str(fila['descripcion']).strip(),
+                                    str(fila['material']).strip(),
                                     int(fila['cantidad']), 
                                     float(fila['peso_total']), 
-                                    float(fila['espesor']), 
+                                    float(fila['espesor']),
+                                     
                                     str(fila['detalles']).strip(), 
                                     int(fila['id'])
                                 ))
