@@ -783,19 +783,45 @@ if st.session_state.rol == "cliente":
             html_logo = f'<img src="{src_logo}" style="height: 60px;">' if src_logo else '<h1 style="color:#1a4a75; margin:0;">TERMOFRIO SPA</h1>'
             html_iso = f'<img src="{src_iso}" style="height: 60px;">' if src_iso else ''
 
+            # -----------------------------------------------------
+                    # NUEVO BLOQUE: Visor Comprobante del Cliente
+                    # -----------------------------------------------------
             filas_html = ""
-            for _, row in df_items_raw.iterrows():
-                desc = str(row.get('descripcion', '')).replace('nan', '')
-                det = str(row.get('detalles', '')).replace('nan', '')
-                filas_html += f"""
-                <tr>
-                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('item_numero', '')}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">{desc}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('cantidad', '')}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">{det}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('peso_total', '')}</td>
-                </tr>
-                """
+            suma_kilos_cliente = 0.0
+            material_cliente = "No especificado"
+
+            if not df_items_raw.empty:
+                if 'material' in df_items_raw.columns:
+                    material_cliente = str(df_items_raw.iloc[0].get('material', 'Galvanizado')).strip()
+                    if material_cliente in ['nan', 'None', '']: material_cliente = 'Galvanizado'
+
+                for _, row in df_items_raw.iterrows():
+                    desc = str(row.get('descripcion', '')).replace('nan', '')
+                    det = str(row.get('detalles', '')).replace('nan', '')
+                    
+                    try: peso_val = float(row.get('peso_total', 0))
+                    except: peso_val = 0.0
+                    suma_kilos_cliente += peso_val
+
+                    filas_html += f"""
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('item_numero', '')}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{desc}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('cantidad', '')}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{det}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{peso_val:.2f}</td>
+                    </tr>
+                    """
+            
+            # Aislación y comentarios
+            fuente_cli = str(fila_ped.get('fuente', '')).lower()
+            extras_cli = []
+            if "aislación" in fuente_cli or "aislacion" in fuente_cli: extras_cli.append("Aislación Interior")
+            if "forro" in fuente_cli: extras_cli.append("Forro Metálico")
+            str_extras_cli = " | ".join(extras_cli) if extras_cli else "Ninguno"
+
+            obs_cli = str(fila_ped.get('observaciones', '')).strip()
+            if obs_cli in ['nan', 'None', '']: obs_cli = "Sin observaciones adicionales."
 
             num_ped_limpio = str(fila_ped['num_pedido']).strip().upper().replace("OT-", "").replace("OT", "")
             obra_limpia = str(fila_ped['obra_codigo']).replace('/', '-').replace('\\', '-')
@@ -845,11 +871,21 @@ if st.session_state.rol == "cliente":
                     <table style="width: 100%; margin-bottom: 20px; font-size: 16px; border:none;">
                         <tr>
                             <td style="border:none;"><strong>Pedido N°:</strong> {fila_ped['num_pedido']}</td>
-                            <td style="border:none; text-align: right;"><strong>Kilos Estimados:</strong> {fila_ped.get('kg_estimados', '0')} Kg</td>
+                            <td style="border:none; text-align: right; color: #1a4a75;"><strong>Kg Estimados Totales:</strong> {suma_kilos_cliente:.2f} Kg</td>
                         </tr>
                         <tr>
                             <td style="border:none; padding-top: 10px;"><strong>Obra:</strong> {fila_ped['obra_codigo']}</td>
                             <td style="border:none; padding-top: 10px; text-align: right;"><strong>Solicitante:</strong> {fila_ped.get('quien_envia', 'N/A')}</td>
+                        </tr>
+                        <tr>
+                            <td colspan="2" style="border:none; padding-top: 15px; border-top: 1px dashed #ccc; margin-top: 15px;">
+                                <strong>Material Principal:</strong> {material_cliente} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>Condición Extra:</strong> <span style="color:#e74c3c; font-weight:bold;">{str_extras_cli}</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td colspan="2" style="border:none; padding-top: 10px;">
+                                <strong>Comentarios del Pedido:</strong> {obs_cli}
+                            </td>
                         </tr>
                     </table>
                     
