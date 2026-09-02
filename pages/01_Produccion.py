@@ -1293,13 +1293,29 @@ with tab2:
                 html_logo = f'<img src="{src_logo}" style="height: 60px;">' if src_logo else '<h1 style="color:#1a4a75; margin:0;">TERMOFRIO SPA</h1>'
                 html_iso = f'<img src="{src_iso}" style="height: 60px;">' if src_iso else ''
 
+        # -----------------------------------------------------
+                # NUEVO BLOQUE: Visor HTML de Taller
+                # -----------------------------------------------------
                 filas_html = ""
+                suma_kilos_taller = 0.0
+                material_taller = "No especificado"
+
                 if not df_para_pdf.empty:
+                    # Detectamos el material del primer ítem
+                    if 'material' in df_para_pdf.columns:
+                        material_taller = str(df_para_pdf.iloc[0].get('material', 'Galvanizado')).strip()
+                        if material_taller in ['nan', 'None', '']: material_taller = 'Galvanizado'
+
                     for _, row in df_para_pdf.iterrows():
                         desc = str(row.get('descripcion', '')).replace('nan', '')
                         det = str(row.get('detalles', '')).replace('nan', '')
-                        esp = str(row.get('espesor', '')).replace('nan', '') # 📏 AQUÍ EXTRAEMOS EL ESPESOR
+                        esp = str(row.get('espesor', '')).replace('nan', '') 
                         
+                        # Sumamos el peso y lo formateamos a 2 decimales
+                        try: peso_val = float(row.get('peso_total', 0))
+                        except: peso_val = 0.0
+                        suma_kilos_taller += peso_val
+
                         filas_html += f"""
                         <tr>
                             <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('item_numero', '')}</td>
@@ -1307,11 +1323,21 @@ with tab2:
                             <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('cantidad', '')}</td>
                             <td style="padding: 8px; border: 1px solid #ddd;">{det}</td>
                             <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold;">{esp}</td>
-                            <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('peso_total', '')}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{peso_val:.2f}</td>
                         </tr>
                         """
                 else:
                     filas_html = '<tr><td colspan="6" style="text-align:center; padding:10px;">No hay piezas registradas</td></tr>'
+
+                # Extraemos la información extra (Aislación, Forro y Comentarios)
+                fuente_txt = str(fila_ped.get('fuente', '')).lower()
+                extras_taller = []
+                if "aislación" in fuente_txt or "aislacion" in fuente_txt: extras_taller.append("Aislación Interior")
+                if "forro" in fuente_txt: extras_taller.append("Forro Metálico")
+                str_extras = " | ".join(extras_taller) if extras_taller else "Ninguno"
+
+                obs_taller = str(fila_ped.get('observaciones', '')).strip()
+                if obs_taller in ['nan', 'None', '']: obs_taller = "Sin observaciones adicionales."
 
                 num_ped_limpio = str(fila_ped['num_pedido']).strip().upper().replace("OT-", "").replace("OT", "")
                 obra_limpia = str(fila_ped['obra_codigo']).replace('/', '-').replace('\\', '-')
@@ -1361,11 +1387,21 @@ with tab2:
                         <table style="width: 100%; margin-bottom: 20px; font-size: 16px; border:none;">
                             <tr>
                                 <td style="border:none;"><strong>Pedido N°:</strong> {fila_ped['num_pedido']}</td>
-                                <td style="border:none; text-align: right;"><strong>Kilos Reales:</strong> {fila_ped.get('kg_reales', '0')} Kg</td>
+                                <td style="border:none; text-align: right; color: #1a4a75;"><strong>Kg Estimados Totales:</strong> {suma_kilos_taller:.2f} Kg</td>
                             </tr>
                             <tr>
                                 <td style="border:none; padding-top: 10px;"><strong>Obra:</strong> {fila_ped['obra_codigo']}</td>
                                 <td style="border:none; padding-top: 10px; text-align: right;"><strong>Solicitante:</strong> {fila_ped.get('quien_envia', 'N/A')}</td>
+                            </tr>
+                            <tr>
+                                <td colspan="2" style="border:none; padding-top: 15px; border-top: 1px dashed #ccc; margin-top: 15px;">
+                                    <strong>Material Principal:</strong> {material_taller} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>Condición Extra:</strong> <span style="color:#e74c3c; font-weight:bold;">{str_extras}</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td colspan="2" style="border:none; padding-top: 10px;">
+                                    <strong>Comentarios del Pedido:</strong> {obs_taller}
+                                </td>
                             </tr>
                         </table>
                         
@@ -1749,37 +1785,49 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                             df_items = pd.read_sql(f"SELECT * FROM items_pedido WHERE pedido_id={int(fila_pdf['id'])}", conn_html)
                             conn_html.close()
                             
+                            # -----------------------------------------------------
+                            # NUEVO BLOQUE: Visor Comprobante Oficial (Para Correo)
+                            # -----------------------------------------------------
                             filas_html = ""
+                            suma_kilos_final = 0.0
+                            material_final = "No especificado"
+
                             if not df_items.empty:
+                                if 'material' in df_items.columns:
+                                    material_final = str(df_items.iloc[0].get('material', 'Galvanizado')).strip()
+                                    if material_final in ['nan', 'None', '']: material_final = 'Galvanizado'
+
                                 for _, row in df_items.iterrows():
                                     desc = str(row.get('descripcion', '')).replace('nan', '')
                                     det = str(row.get('detalles', '')).replace('nan', '')
+                                    
+                                    try: peso_val = float(row.get('peso_total', 0))
+                                    except: peso_val = 0.0
+                                    suma_kilos_final += peso_val
+
                                     filas_html += f"""
                                     <tr>
                                         <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('item_numero', '')}</td>
                                         <td style="padding: 8px; border: 1px solid #ddd;">{desc}</td>
                                         <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('cantidad', '')}</td>
                                         <td style="padding: 8px; border: 1px solid #ddd;">{det}</td>
-                                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{row.get('peso_total', '')}</td>
+                                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{peso_val:.2f}</td>
                                     </tr>
                                     """
                             else:
                                 filas_html = '<tr><td colspan="5" style="text-align:center; padding:10px;">No hay piezas detalladas</td></tr>'
 
-                            # 🖼️ LECTURA DE IMÁGENES EN BASE64 DESDE LA CARPETA
+                            # Extraer Logos
                             import base64
                             import os
                             
                             def get_b64(ruta):
-                                # 1. Si no encuentra la ruta exacta, busca variaciones de extensión automáticamente
                                 if not os.path.exists(ruta):
                                     ruta_base = os.path.splitext(ruta)[0]
                                     for ext in ['.jpg', '.JPG', '.png', '.PNG', '.jpeg', '.JPEG']:
                                         if os.path.exists(ruta_base + ext):
                                             ruta = ruta_base + ext
                                             break
-                                
-                                # 2. Si finalmente lo encuentra, lo convierte a código
                                 if os.path.exists(ruta):
                                     with open(ruta, "rb") as f:
                                         ext = ruta.split('.')[-1].lower()
@@ -1787,17 +1835,24 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                                         return f"data:{mime};base64,{base64.b64encode(f.read()).decode('utf-8')}"
                                 return None
 
-                            # ⚠️ Búsqueda inteligente en la carpeta firma_timbre
                             src_logo = get_b64("firma_timbre/termofriologo.JPG")
                             src_iso = get_b64("firma_timbre/tfiso.JPG")
-                            src_timbre = get_b64("firma_timbre/timbre") # Al no ponerle extensión, buscará cualquiera (.png, .JPG, etc.)
+                            src_timbre = get_b64("firma_timbre/timbre") 
 
-                            # Si encuentra las fotos, crea la etiqueta. Si no, pone el texto de respaldo.
                             html_logo = f'<img src="{src_logo}" style="height: 60px;">' if src_logo else '<h1 style="color:#1a4a75; margin:0;">TERMOFRIO SPA</h1>'
                             html_iso = f'<img src="{src_iso}" style="height: 60px;">' if src_iso else ''
                             html_timbre = f'<img src="{src_timbre}" style="max-width: 250px;">' if src_timbre else '<div style="display:inline-block; border:3px solid #1a4a75; padding:20px 40px; border-radius:10px; color:#1a4a75; font-weight:bold;">TIMBRE TALLER TERMOFRIO</div>'
 
-                            # 🏷️ ARMADO DEL NOMBRE DINÁMICO PARA EL PDF DEL NAVEGADOR
+                            # Aislación y comentarios
+                            fuente_txt2 = str(fila_pdf.get('fuente', '')).lower()
+                            extras_final = []
+                            if "aislación" in fuente_txt2 or "aislacion" in fuente_txt2: extras_final.append("Aislación Interior")
+                            if "forro" in fuente_txt2: extras_final.append("Forro Metálico")
+                            str_extras2 = " | ".join(extras_final) if extras_final else "Ninguno"
+
+                            obs_final = str(fila_pdf.get('observaciones', '')).strip()
+                            if obs_final in ['nan', 'None', '']: obs_final = "Sin observaciones adicionales."
+
                             num_ped_limpio = str(fila_pdf['num_pedido']).strip().upper().replace("OT-", "").replace("OT", "")
                             obra_limpia = str(fila_pdf['obra_codigo']).replace('/', '-').replace('\\', '-')
                             titulo_pdf = f"Comprobante OT-{num_ped_limpio} {obra_limpia}"
@@ -1818,7 +1873,6 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                                     .btn-magico:hover {{ background-color: #123555; }}
                                     table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }}
                                     th {{ background-color: #1a4a75; color: white; padding: 10px; border: 1px solid #ddd; }}
-                                    /* Clases para el encabezado profesional */
                                     .header-container {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }}
                                     .header-center {{ flex: 2; text-align: center; }}
                                     .header-side {{ flex: 1; }}
@@ -1837,7 +1891,7 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                                         <div class="header-side">{html_logo}</div>
                                         <div class="header-center">
                                             <h3 style="color: #555; margin: 0;">Comprobante Oficial de Pedido</h3>
-                                            <p style="margin: 5px 0 0 0; color: #777;">Ingreso Manual</p>
+                                            <p style="margin: 5px 0 0 0; color: #777;">Documento Oficial Termofrio</p>
                                         </div>
                                         <div class="header-side header-right">{html_iso}</div>
                                     </div>
@@ -1847,11 +1901,21 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                                     <table style="width: 100%; margin-bottom: 20px; font-size: 16px; border:none;">
                                         <tr>
                                             <td style="border:none;"><strong>Pedido N°:</strong> {fila_pdf['num_pedido']}</td>
-                                            <td style="border:none; text-align: right;"><strong>Kilos Totales:</strong> {fila_pdf['kg_reales']} Kg</td>
+                                            <td style="border:none; text-align: right; color: #1a4a75;"><strong>Kg Estimados Totales:</strong> {suma_kilos_final:.2f} Kg</td>
                                         </tr>
                                         <tr>
                                             <td style="border:none; padding-top: 10px;"><strong>Obra:</strong> {fila_pdf['obra_codigo']}</td>
                                             <td style="border:none; padding-top: 10px; text-align: right;"><strong>Solicitante:</strong> {fila_pdf.get('quien_envia', 'N/A')}</td>
+                                        </tr>
+                                        <tr>
+                                            <td colspan="2" style="border:none; padding-top: 15px; border-top: 1px dashed #ccc; margin-top: 15px;">
+                                                <strong>Material Principal:</strong> {material_final} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>Condición Extra:</strong> <span style="color:#e74c3c; font-weight:bold;">{str_extras2}</span>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td colspan="2" style="border:none; padding-top: 10px;">
+                                                <strong>Comentarios del Pedido:</strong> {obs_final}
+                                            </td>
                                         </tr>
                                     </table>
                                     
