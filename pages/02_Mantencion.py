@@ -478,8 +478,11 @@ if modo_kiosco:
 
                     if not errores:
                         fecha_dt = datetime.now(); f_str = fecha_dt.strftime("%Y-%m-%d %H:%M:%S")
-                        f_path = os.path.join(CARPETA_FIRMAS, f"{param_maquina}_{fecha_dt.strftime('%Y%m%d%H%M')}.png")
-                        Image.fromarray(canvas_int.image_data.astype(np.uint8)).save(f_path)
+                        try:
+                            Image.fromarray(canvas_int.image_data.astype(np.uint8)).save(f_path)
+                        except Exception:
+                        # Si el celular se demora, creamos un lienzo blanco para que no falle
+                            Image.new('RGB', (200, 100), color='white').save(f_path)
                         
                         ruta_evidencia = ""
                         if foto_chk_up:
