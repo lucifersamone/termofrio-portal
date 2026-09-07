@@ -463,7 +463,12 @@ if modo_kiosco:
                     if op == "Seleccionar...": errores = True; st.error("Seleccione Operador.")
                     if es_operativo is None: errores = True; st.error("Indique si está operativo.")
                     if es_operativo == "No, Presenta Falla" and not motivo_falla_final.strip(): errores = True; st.error("Explique la falla.")
-                    if canvas_int.image_data is None: errores = True; st.error("Firme el documento.")
+                                # Validación segura del canvas (Evita el RuntimeError en celulares)
+                    try:
+                        if canvas_int is None or canvas_int.image_data is None:
+                            errores = True; st.error("Firme el documento.")
+                    except Exception:
+                        errores = True; st.error("Firme el documento.")
                     for r in respuestas_checks:
                         if r['estado'] == 'No Cumple' and not r['motivo'].strip(): errores = True; st.error(f"Falta motivo para '{r['punto']}'.")
 
