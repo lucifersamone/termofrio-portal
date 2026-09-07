@@ -464,24 +464,26 @@ if modo_kiosco:
                     if es_operativo is None: errores = True; st.error("Indique si está operativo.")
                     if es_operativo == "No, Presenta Falla" and not motivo_falla_final.strip(): errores = True; st.error("Explique la falla.")
                     
-                    # Validación segura de firma en celulares (cuenta trazos, no píxeles)
-                firma_valida = False
-                if canvas_int is not None and canvas_int.json_data is not None:
-                    if len(canvas_int.json_data.get("objects", [])) > 0:
-                        firma_valida = True
-
-                if not firma_valida:
-                    errores = True
-                    st.error("Firme el documento.")
                     for r in respuestas_checks:
                         if r['estado'] == 'No Cumple' and not r['motivo'].strip(): errores = True; st.error(f"Falta motivo para '{r['punto']}'.")
 
+                    firma_valida = False
+                    if canvas_int is not None and canvas_int.json_data is not None:
+                        if len(canvas_int.json_data.get("objects", [])) > 0:
+                            firma_valida = True
+
+                    if not firma_valida:
+                        errores = True
+                        st.error("Firme el documento.")
+
                     if not errores:
                         fecha_dt = datetime.now(); f_str = fecha_dt.strftime("%Y-%m-%d %H:%M:%S")
+                        f_path = os.path.join(CARPETA_FIRMAS, f"{param_maquina}_{fecha_dt.strftime('%Y%m%d%H%M')}.png")
+                        
                         try:
                             Image.fromarray(canvas_int.image_data.astype(np.uint8)).save(f_path)
                         except Exception:
-                        # Si el celular se demora, creamos un lienzo blanco para que no falle
+                            # Si el celular se demora, creamos un lienzo blanco para que no falle
                             Image.new('RGB', (200, 100), color='white').save(f_path)
                         
                         ruta_evidencia = ""
@@ -503,10 +505,10 @@ if modo_kiosco:
                             pdf_path = generar_pdf_checklist(param_maquina, op, fecha_dt, txt_chk_lista, estado_pdf, motivo_falla_final, f_path, ruta_evidencia)
                             if pdf_path:
                                 conn = get_connection(); c=conn.cursor()
-                                # 🔴 CORE FIX: Update con id
                                 c.execute("UPDATE registros_inspeccion SET pdf_path=%s WHERE id=%s", (pdf_path, last_id))
                                 conn.commit(); conn.close()
                         except: pass
+                        
                         st.success("Guardado!"); st.balloons(); time.sleep(2); st.rerun()
 
     # --- FLUJO 2: PERSONAL EXTERNO ---
