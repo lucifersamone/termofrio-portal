@@ -151,7 +151,7 @@ CARPETA_FOTOS = os.path.join(BASE_DIR, "img_maquinas")
 
 # Rutas para el PDF
 DIR_RECURSOS = os.path.join(BASE_DIR, 'firma_timbre')
-LOGO_PATH = os.path.join(DIR_RECURSOS, 'termofriologo.jpg')
+LOGO_PATH = os.path.join(DIR_RECURSOS, 'termofriocopecflux.png')
 ISO_PATH = os.path.join(DIR_RECURSOS, 'tfiso.jpg')
 
 # ====================================================================
@@ -777,7 +777,7 @@ if st.session_state.rol == "cliente":
                         return f"data:{mime};base64,{base64.b64encode(f.read()).decode('utf-8')}"
                 return None
 
-            src_logo = get_b64("firma_timbre/termofriologo.JPG")
+            src_logo = get_b64("firma_timbre/termofriocopecflux.png")
             src_iso = get_b64("firma_timbre/tfiso.JPG")
 
             html_logo = f'<img src="{src_logo}" style="height: 60px;">' if src_logo else '<h1 style="color:#1a4a75; margin:0;">TERMOFRIO SPA</h1>'

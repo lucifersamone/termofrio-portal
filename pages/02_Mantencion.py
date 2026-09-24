@@ -34,7 +34,7 @@ CARPETA_BIBLIOTECA = os.path.join(ROOT_DIR, "biblioteca_maquinas")
 CARPETA_FOTOS_EVIDENCIA = os.path.join(ROOT_DIR, "evidencias_fotograficas")
 
 # --- RUTAS DE LOGOS ---
-LOGO_TERMOFRIO = os.path.join(CARPETA_QRS, "termofriologo.jpg") 
+LOGO_TERMOFRIO = os.path.join(CARPETA_QRS, "termofriocopecflux.png") 
 LOGO_ISO = os.path.join(CARPETA_QRS, "tfiso.jpg") 
 
 MESES_NOMBRES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]

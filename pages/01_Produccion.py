@@ -63,7 +63,7 @@ DIR_RECURSOS = os.path.join(ROOT_DIR, 'firma_timbre')
 
 FIRMA_PATH = os.path.join(DIR_RECURSOS, 'firma.png')
 TIMBRE_PATH = os.path.join(DIR_RECURSOS, 'timbre.jpg')
-LOGO_PATH = os.path.join(DIR_RECURSOS, 'termofriologo.JPG')
+LOGO_PATH = os.path.join(DIR_RECURSOS, 'termofriocopecflux.png')
 ISO_PATH = os.path.join(DIR_RECURSOS, 'tfiso.JPG')
 
 CARPETA_EXCELS = os.path.join(ROOT_DIR, 'excels_guardados') 
@@ -1287,7 +1287,7 @@ with tab2:
                             return f"data:{mime};base64,{base64.b64encode(f.read()).decode('utf-8')}"
                     return None
 
-                src_logo = get_b64("firma_timbre/termofriologo.JPG")
+                src_logo = get_b64("firma_timbre/termofriocopecflux.png")
                 src_iso = get_b64("firma_timbre/tfiso.JPG")
 
                 html_logo = f'<img src="{src_logo}" style="height: 60px;">' if src_logo else '<h1 style="color:#1a4a75; margin:0;">TERMOFRIO SPA</h1>'
@@ -1835,7 +1835,7 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                                         return f"data:{mime};base64,{base64.b64encode(f.read()).decode('utf-8')}"
                                 return None
 
-                            src_logo = get_b64("firma_timbre/termofriologo.JPG")
+                            src_logo = get_b64("firma_timbre/termofriocopecflux.png")
                             src_iso = get_b64("firma_timbre/tfiso.JPG")
                             src_timbre = get_b64("firma_timbre/timbre") 
 
