@@ -23,6 +23,32 @@ st.set_page_config(
     layout="wide"
 )
 
+# ==========================================================
+# 👁️ MODO VISOR GERENCIAL (PANTALLA COMPLETA Y LIMPIA)
+# ==========================================================
+try:
+    if st.query_params.get("modo") == "visor":
+        st.session_state["logged_in"] = True
+        st.session_state["rol"] = "Visor"
+        st.session_state["usuario"] = "Visor Gerencia"
+        st.session_state["autenticado"] = True
+        
+        st.markdown("""
+            <style>
+                [data-testid="stSidebar"] {display: none !important;}
+                [data-testid="collapsedControl"] {display: none !important;}
+                header {display: none !important;}
+                .block-container {padding-top: 2rem !important;}
+            </style>
+        """, unsafe_allow_html=True)
+except Exception:
+    pass
+# ==========================================================
+
+# =================================================================================
+# 🚀 GUARDIÁN ULTRA-BLINDADO: ENTRADA DIRECTA DESDE QR SIN LOGIN
+# =================================================================================
+if "maquina" in st.query_params:
 # ====================================================================================
 # 🚀 GUARDIÁN ULTRA-BLINDADO: ENTRADA DIRECTA DESDE QR SIN LOGIN
 # ====================================================================================
@@ -339,6 +365,7 @@ MAPEO_CAMPOS = {
     "Unión c/ Lona": ["A", "B", "H", "Entrada", "Salida"],
     "Vicera c/ Malla": ["A", "B", "Entrada", "Salida"],
     "Plancha Lisa": ["A", "B"], 
+    "Lona Cilíndrica": ["H", "Dia1", "Entrada", "Salida"],
     "Pieza especial": ["A", "B", "d", "Simetria", "C", "D", "H", "Dia1", "Dia2", "Angulo", "Casquetes", "Entrada", "Salida"]
 }
 
