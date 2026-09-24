@@ -483,8 +483,8 @@ if not st.session_state.logged_in:
 
 # --- BARRA LATERAL CON OPCIÓN DE CAMBIO DE CLAVE ---
 with st.sidebar:
-    st.markdown(f"👤 **Usuario:** {st.session_state.nombre_usuario}")
-    st.markdown(f"🏷️ **Rol:** {str(st.session_state.rol).capitalize()}")
+    st.markdown(f"👤 **Usuario:** {st.session_state.get('nombre_usuario', 'Visor Gerencia')}")
+    st.markdown(f"🏷️ **Rol:** {str(st.session_state.get('rol', 'Visor')).capitalize()}")
     st.divider()
     
     with st.expander("🔑 Cambiar Contraseña"):
