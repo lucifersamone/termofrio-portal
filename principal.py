@@ -24,15 +24,18 @@ st.set_page_config(
 )
 
 # ==========================================================
-# 👁️ MODO VISOR GERENCIAL (PANTALLA COMPLETA Y LIMPIA)
+# 👁️ MODO VISOR GERENCIAL (PANTALLA COMPLETA Y SIN CONTRASEÑA)
 # ==========================================================
 try:
     if st.query_params.get("modo") == "visor":
+        # Entregamos TODAS las llaves maestras para saltar la pantalla de contraseña
         st.session_state["logged_in"] = True
+        st.session_state["logueado"] = True
+        st.session_state["autenticado"] = True
         st.session_state["rol"] = "Visor"
         st.session_state["usuario"] = "Visor Gerencia"
-        st.session_state["autenticado"] = True
         
+        # Escondemos los menús para que no puedan salir de la página principal
         st.markdown("""
             <style>
                 [data-testid="stSidebar"] {display: none !important;}
@@ -49,10 +52,6 @@ except Exception:
 # 🚀 GUARDIÁN ULTRA-BLINDADO: ENTRADA DIRECTA DESDE QR SIN LOGIN
 # =================================================================================
 if "maquina" in st.query_params:
-# ====================================================================================
-# 🚀 GUARDIÁN ULTRA-BLINDADO: ENTRADA DIRECTA DESDE QR SIN LOGIN
-# ====================================================================================
- if "maquina" in st.query_params:
     # 1. Activamos todas las variables de sesión idénticas a un inicio de sesión exitoso
     st.session_state["rol"] = "operario"
     st.session_state["usuario"] = "Operario Taller"
