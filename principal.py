@@ -34,6 +34,7 @@ try:
         st.session_state["autenticado"] = True
         st.session_state["rol"] = "Visor"
         st.session_state["usuario"] = "Visor Gerencia"
+        st.session_state["nombre_usuario"] = "Visor Gerencia"  # 🔑 LA LLAVE QUE FALTABA
         
         # Escondemos los menús para que no puedan salir de la página principal
         st.markdown("""
