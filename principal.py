@@ -52,7 +52,7 @@ if "maquina" in st.query_params:
 # ====================================================================================
 # 🚀 GUARDIÁN ULTRA-BLINDADO: ENTRADA DIRECTA DESDE QR SIN LOGIN
 # ====================================================================================
-if "maquina" in st.query_params:
+ if "maquina" in st.query_params:
     # 1. Activamos todas las variables de sesión idénticas a un inicio de sesión exitoso
     st.session_state["rol"] = "operario"
     st.session_state["usuario"] = "Operario Taller"
