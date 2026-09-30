@@ -1425,7 +1425,7 @@ with tabs_admin[0]:
             for _, row in df_filtrado.iterrows():
                 ot = str(row.get('num_pedido', ''))
                 obra = str(row.get('obra_codigo', 'N/A'))
-                solicitante = str(row.get('quien_envia', 'N/A'))
+                solicitante = str(row.get('solicitante', 'N/A'))
                 detalles.append(f"<b>{ot}</b> ({obra} | {solicitante})")
             return "<br>".join(detalles)
 
