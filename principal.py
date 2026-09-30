@@ -1420,8 +1420,7 @@ with tabs_admin[0]:
                 # --- NUEVA FUNCIÓN PARA FORMATEAR DETALLES (UI MEJORADA) ---
         def obtener_detalle_tarjetas(df_filtrado, texto_vacio):
             if df_filtrado.empty:
-                return f"<div style='height: 85px; overflow-y: auto; color: #666; font-style: italic;'>{texto_vacio}</div>"
-            
+                return f"<div style='height: 130px; overflow-y: auto; padding-right: 5px;'>{''.join(detalles)}</div>"
             detalles = []
             for _, row in df_filtrado.iterrows():
                 ot = str(row.get('num_pedido', ''))
