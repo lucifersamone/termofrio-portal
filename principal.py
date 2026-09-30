@@ -1386,7 +1386,7 @@ if st.session_state.rol == "cliente":
 # ====================================================================
 # VISTA EXCLUSIVA PARA ADMINISTRADOR Y GERENCIA (CENTRO DE COMANDO)
 # ====================================================================
-if st.session_state.rol == "gerencia":
+if st.session_state.rol in ["gerencia", "Visor"]:
     st.markdown("""
         <style>
             [data-testid="stSidebar"] {display: none !important;}
