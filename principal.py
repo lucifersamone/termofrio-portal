@@ -1431,12 +1431,13 @@ with tabs_admin[0]:
                 if solicitante in ["<NA>", "nan", "NaN", "None", "", "N/A"]:
                     solicitante = "No registrado"
                 
-                item = f"""
-                <div style='margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid rgba(0,0,0,0.05); line-height: 1.2;'>
-                    <span style='font-size: 13px; color: #111;'><b>{ot} | 👤 {solicitante}</b></span><br>
-                    <span style='font-size: 11px; color: #555;'>🏢 {obra}</span>
-                </div>
-                """
+                # Ajustamos la construcción del HTML para evitar que se interprete como código
+                item = (
+                    "<div style='margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid rgba(0,0,0,0.05); line-height: 1.2;'>"
+                    f"<span style='font-size: 13px; color: #111;'><b>{ot} | 👤 {solicitante}</b></span><br>"
+                    f"<span style='font-size: 11px; color: #555;'>🏢 {obra}</span>"
+                    "</div>"
+                )
                 detalles.append(item)
                 
             return f"<div style='height: 130px; overflow-y: auto; padding-right: 5px;'>{''.join(detalles)}</div>"
