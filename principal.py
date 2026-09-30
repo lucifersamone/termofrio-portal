@@ -740,7 +740,7 @@ if st.session_state.rol == "cliente":
             obra_list = st.session_state.obra_usuario
             
             query = """
-            SELECT id, num_pedido as 'Nº Pedido', quien_envia as 'Solicitante', obra_codigo as 'Obra', 
+            SELECT id, num_pedido as 'num_pedido', quien_envia as 'Solicitante', obra_codigo as 'Obra', 
             fecha_recepcion as 'Ingreso', fecha_limite as 'Fecha Límite', 
             fecha_termino as 'F. Cierre', fecha_despacho as 'F. Despacho',
             estado as 'Estado', kg_estimados as 'Kg Est.', kg_reales as 'Kg Reales'
@@ -770,8 +770,9 @@ if st.session_state.rol == "cliente":
                 st.markdown("#### 🔍 Ver Detalle y Descargar Comprobante")
                 col_b1, col_b2 = st.columns([1, 2])
                 with col_b1:
-                    pedido_a_ver = st.selectbox("Seleccionar Pedido:", df_vista['N° Pedido'].astype(str) + " / " + df_vista['Obra'], key="cli_ver_ped")
-                    if pedido_a_ver: id_ver = df_vista[df_vista['N° Pedido'].astype(str) + " / " + df_vista['Obra'] == pedido_a_ver].iloc[0]['id']
+                    pedido_a_ver = st.selectbox("Seleccionar Pedido:", df_vista['num_pedido'].astype(str) + " / " + df_vista['Obra'], key="cli_ver_ped")
+                    if pedido_a_ver:
+                        id_ver = df_vista[df_vista['num_pedido'].astype(str) + " / " + df_vista['Obra'] == pedido_a_ver].iloc[0]['id']
                 
                 if pedido_a_ver:
                     with col_b2:
