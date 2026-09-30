@@ -973,8 +973,8 @@ if st.session_state.rol == "cliente":
                     st.markdown("#### 🗑️ Anular Pedido")
                     col_del1, col_del2 = st.columns([3, 1])
                     with col_del1:
-                        df_pendientes['display_name'] = "Pedido N° " + df_pendientes['N° Pedido'].astype(str) + " - Obra: " + df_pendientes['Obra'].astype(str)
-                        pedido_a_borrar = st.selectbox("Selecciona el pedido a anular:", df_pendientes['display_name'])
+                        df_pendientes['display name'] = "Pedido Nº " + df_pendientes['num_pedido'].astype(str) + " / Obra: " + df_pendientes['Obra'].astype(str)
+                        pedido_a_borrar = st.selectbox("Selecciona el pedido a anular:", df_pendientes['display name'])
                     with col_del2:
                         st.markdown("<br>", unsafe_allow_html=True)
                         if st.button("🚫 Anular Seleccionado", type="primary"):
