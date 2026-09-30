@@ -1417,11 +1417,11 @@ with tabs_admin[0]:
                 df_pend['fecha_recepcion_dt'] = pd.to_datetime(df_pend['fecha_recepcion'], format='mixed', errors='coerce')
                 df_pend = df_pend.sort_values(by=['sort_urgencia', 'fecha_recepcion_dt'])
                 
-                # --- NUEVA FUNCIÓN PARA FORMATEAR DETALLES (CORRECCIÓN DE RENDERIZADO HTML) ---
+        # --- NUEVA FUNCIÓN PARA FORMATEAR DETALLES (ALTURA ESTRICTA PARA 3 PEDIDOS) ---
         def obtener_detalle_tarjetas(df_filtrado, texto_vacio):
             if df_filtrado.empty:
                 return (
-                    "<div style='background-color: rgba(255,255,255,0.4); border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; padding: 10px; min-height: 50px; display: flex; align-items: center; justify-content: center;'>"
+                    "<div style='background-color: rgba(255,255,255,0.4); border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; padding: 10px; height: 145px; display: flex; align-items: center; justify-content: center;'>"
                     f"<span style='color: #666; font-style: italic;'>{texto_vacio}</span>"
                     "</div>"
                 )
@@ -1443,13 +1443,14 @@ with tabs_admin[0]:
                 )
                 detalles.append(item)
                 
-                return (
-                "<div style='background-color: rgba(255,255,255,0.5); border: 1px solid rgba(0,0,0,0.15); border-radius: 6px; padding: 8px 8px 0px 8px; box-shadow: inset 0px 2px 4px rgba(0,0,0,0.04); max-height: 180px; overflow-y: auto; margin-top: 5px;'>"
+            # 'height: 145px' asegura la medida exacta para 3 pedidos antes de activar el scroll
+            return (
+                "<div style='background-color: rgba(255,255,255,0.5); border: 1px solid rgba(0,0,0,0.15); border-radius: 6px; padding: 8px 8px 0px 8px; box-shadow: inset 0px 2px 4px rgba(0,0,0,0.04); height: 145px; overflow-y: auto; margin-top: 5px;'>"
                 f"{''.join(detalles)}"
                 "</div>"
-                )
+            )
         
-                detalles.append(item)
+            detalles.append(item)
                 
             # Contenedor con marco visual claro para el área de scroll
             return f"""
@@ -1480,11 +1481,11 @@ with tabs_admin[0]:
         despachados_semana = len(df_despachados_semana)
         texto_despachados = obtener_detalle_tarjetas(df_despachados_semana, "Entregados esta semana")
 
-        # --- DIBUJADO DE LAS TARJETAS HTML (DISEÑO OPTIMIZADO PARA ESPACIO) ---
+        # --- DIBUJADO DE LAS TARJETAS HTML (SIMETRÍA ABSOLUTA) ---
         c_est1, c_est2, c_est3, c_est4 = st.columns(4)
         
         c_est1.markdown(f'''
-        <div style="background-color:#f8d7da; padding:15px; border-radius:10px; border-left:5px solid #dc3545; min-height:150px; display:flex; flex-direction:column; justify-content: flex-start;">
+        <div style="background-color:#f8d7da; padding:15px; border-radius:10px; border-left:5px solid #dc3545; height:220px; display:flex; flex-direction:column; justify-content: flex-start;">
             <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px;">
                 <h5 style="margin:0; color: #dc3545;">⏳ En Cola</h5>
                 <h2 style="margin:0; font-weight: 800; color: #dc3545;">{pendientes_count}</h2>
@@ -1494,7 +1495,7 @@ with tabs_admin[0]:
         ''', unsafe_allow_html=True)
 
         c_est2.markdown(f'''
-        <div style="background-color:#fff3cd; padding:15px; border-radius:10px; border-left:5px solid #ffc107; min-height:150px; display:flex; flex-direction:column; justify-content: flex-start;">
+        <div style="background-color:#fff3cd; padding:15px; border-radius:10px; border-left:5px solid #ffc107; height:220px; display:flex; flex-direction:column; justify-content: flex-start;">
             <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px;">
                 <h5 style="margin:0; color: #856404;">⚙ En Proceso</h5>
                 <h2 style="margin:0; font-weight: 800; color: #856404;">{en_proceso_count}</h2>
@@ -1504,7 +1505,7 @@ with tabs_admin[0]:
         ''', unsafe_allow_html=True)
         
         c_est3.markdown(f'''
-        <div style="background-color:#d4edda; padding:15px; border-radius:10px; border-left:5px solid #28a745; min-height:150px; display:flex; flex-direction:column; justify-content: flex-start;">
+        <div style="background-color:#d4edda; padding:15px; border-radius:10px; border-left:5px solid #28a745; height:220px; display:flex; flex-direction:column; justify-content: flex-start;">
             <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px;">
                 <h5 style="margin:0; color: #155724;">📦 Listos</h5>
                 <h2 style="margin:0; font-weight: 800; color: #155724;">{listos_count}</h2>
@@ -1514,7 +1515,7 @@ with tabs_admin[0]:
         ''', unsafe_allow_html=True)
         
         c_est4.markdown(f'''
-        <div style="background-color:#d1ecf1; padding:15px; border-radius:10px; border-left:5px solid #17a2b8; min-height:150px; display:flex; flex-direction:column; justify-content: flex-start;">
+        <div style="background-color:#d1ecf1; padding:15px; border-radius:10px; border-left:5px solid #17a2b8; height:220px; display:flex; flex-direction:column; justify-content: flex-start;">
             <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px;">
                 <h5 style="margin:0; color: #0c5460;">🚚 Despachados</h5>
                 <h2 style="margin:0; font-weight: 800; color: #0c5460;">{despachados_semana}</h2>
