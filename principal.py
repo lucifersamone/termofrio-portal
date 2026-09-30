@@ -908,7 +908,7 @@ if st.session_state.rol == "cliente":
 
                         <tr>
                             <td colspan="2" style="border:none; padding-top: 8px;">
-                                <strong>Comentarios / MEN:</strong> {men_cli}
+                                <strong>MEN:</strong> {men_cli}
                             </td>
                         </tr>
 
