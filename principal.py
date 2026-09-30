@@ -1465,12 +1465,11 @@ with tabs_admin[0]:
         despachados_semana = len(df_despachados_semana)
         texto_despachados = obtener_detalle_tarjetas(df_despachados_semana, "Entregados esta semana")
 
-        # --- DIBUJADO DE LAS TARJETAS HTML ---
-        # --- DIBUJADO DE LAS TARJETAS HTML (ALTURA FIJA Y SIMÉTRICA) ---
+        # --- DIBUJADO DE LAS TARJETAS HTML (ALTURA MÍNIMA SIMÉTRICA) ---
         c_est1, c_est2, c_est3, c_est4 = st.columns(4)
         
         c_est1.markdown(f'''
-        <div style="background-color:#f8d7da; padding:15px; border-radius:10px; border-left:5px solid #dc3545; height:230px; display:flex; flex-direction:column;">
+        <div style="background-color:#f8d7da; padding:15px; border-radius:10px; border-left:5px solid #dc3545; min-height:250px; display:flex; flex-direction:column;">
             <h5 style="margin:0;">⏳ En Cola</h5>
             <h1 style="margin:5px 0;">{pendientes_count}</h1>
             {texto_cola}
@@ -1478,15 +1477,15 @@ with tabs_admin[0]:
         ''', unsafe_allow_html=True)
 
         c_est2.markdown(f'''
-        <div style="background-color:#fff3cd; padding:15px; border-radius:10px; border-left:5px solid #ffc107; height:230px; display:flex; flex-direction:column;">
-            <h5 style="margin:0;">⚙️️ En Proceso</h5>
+        <div style="background-color:#fff3cd; padding:15px; border-radius:10px; border-left:5px solid #ffc107; min-height:250px; display:flex; flex-direction:column;">
+            <h5 style="margin:0;">⚙ En Proceso</h5>
             <h1 style="margin:5px 0;">{en_proceso_count}</h1>
             {texto_en_proceso}
         </div>
         ''', unsafe_allow_html=True)
         
         c_est3.markdown(f'''
-        <div style="background-color:#d4edda; padding:15px; border-radius:10px; border-left:5px solid #28a745; height:230px; display:flex; flex-direction:column;">
+        <div style="background-color:#d4edda; padding:15px; border-radius:10px; border-left:5px solid #28a745; min-height:250px; display:flex; flex-direction:column;">
             <h5 style="margin:0;">📦 Listos (Taller)</h5>
             <h1 style="margin:5px 0;">{listos_count}</h1>
             {texto_listos}
@@ -1494,7 +1493,7 @@ with tabs_admin[0]:
         ''', unsafe_allow_html=True)
         
         c_est4.markdown(f'''
-        <div style="background-color:#d1ecf1; padding:15px; border-radius:10px; border-left:5px solid #17a2b8; height:230px; display:flex; flex-direction:column;">
+        <div style="background-color:#d1ecf1; padding:15px; border-radius:10px; border-left:5px solid #17a2b8; min-height:250px; display:flex; flex-direction:column;">
             <h5 style="margin:0;">🚚 Despachados</h5>
             <h1 style="margin:5px 0;">{despachados_semana}</h1>
             {texto_despachados}
