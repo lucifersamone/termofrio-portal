@@ -740,11 +740,12 @@ if st.session_state.rol == "cliente":
             obra_list = st.session_state.obra_usuario
             
             query = """
-            SELECT id, num_pedido as 'N° Pedido', quien_envia as 'Solicitante', obra_codigo as 'Obra', fecha_recepcion as 'Ingreso', 
+            SELECT id, num_pedido as 'Nº Pedido', quien_envia as 'Solicitante', obra_codigo as 'Obra', 
+            fecha_recepcion as 'Ingreso', fecha_limite as 'Fecha Límite', 
             fecha_termino as 'F. Cierre', fecha_despacho as 'F. Despacho',
-            estado as 'Estado', kg_estimados as 'Kg Est.', kg_reales as 'Kg Reales' 
-            FROM pedidos 
-            WHERE quien_envia = ? 
+            estado as 'Estado', kg_estimados as 'Kg Est.', kg_reales as 'Kg Reales'
+            FROM pedidos
+            WHERE quien_envia = ?
             """
             params = [st.session_state.nombre_usuario]
             
@@ -850,6 +851,15 @@ if st.session_state.rol == "cliente":
             obs_cli = str(fila_ped.get('observaciones', '')).strip()
             if obs_cli in ['nan', 'None', '']: obs_cli = "Sin observaciones adicionales."
 
+            # Procesamiento de observaciones y MEN para el comprobante
+            obs_cli = str(fila_ped.get('observaciones', '')).strip()
+            if obs_cli in ['nan', 'None', '']: 
+                obs_cli = "Sin observaciones adicionales."
+            
+            men_cli = str(fila_ped.get('men', '')).strip()
+            if men_cli in ['nan', 'None', '']: 
+                men_cli = "No especificado"
+
             num_ped_limpio = str(fila_ped['num_pedido']).strip().upper().replace("OT-", "").replace("OT", "")
             obra_limpia = str(fila_ped['obra_codigo']).replace('/', '-').replace('\\', '-')
             titulo_pdf = f"Comprobante OT-{num_ped_limpio} {obra_limpia}"
@@ -894,7 +904,13 @@ if st.session_state.rol == "cliente":
                     </div>
                     
                     <hr style="border: 1px solid #ccc; margin: 20px 0;">
-                    
+
+                        <tr>
+                            <td colspan="2" style="border:none; padding-top: 8px;">
+                                <strong>Comentarios / MEN:</strong> {men_cli}
+                            </td>
+                        </tr>
+
                     <table style="width: 100%; margin-bottom: 20px; font-size: 16px; border:none;">
                         <tr>
                             <td style="border:none;"><strong>Pedido N°:</strong> {fila_ped['num_pedido']}</td>
