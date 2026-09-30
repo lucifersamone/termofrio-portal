@@ -1417,27 +1417,46 @@ with tabs_admin[0]:
                 df_pend['fecha_recepcion_dt'] = pd.to_datetime(df_pend['fecha_recepcion'], format='mixed', errors='coerce')
                 df_pend = df_pend.sort_values(by=['sort_urgencia', 'fecha_recepcion_dt'])
                 
-                en_proceso_count = min(2, len(df_pend))
-                pendientes_count = len(df_pend) - en_proceso_count
-                nombres_en_proceso = df_pend.head(en_proceso_count)['num_pedido'].astype(str).tolist()
-                texto_en_proceso = "Pedido(s): " + ", ".join(nombres_en_proceso)
-            else:
-                en_proceso_count = 0; pendientes_count = 0; texto_en_proceso = "Ninguno en máquina"
+                # --- NUEVA FUNCIÓN PARA FORMATEAR DETALLES ---
+        def obtener_detalle_tarjetas(df_filtrado, texto_vacio):
+            if df_filtrado.empty:
+                return texto_vacio
+            detalles = []
+            for _, row in df_filtrado.iterrows():
+                ot = str(row.get('num_pedido', ''))
+                obra = str(row.get('obra_codigo', 'N/A'))
+                solicitante = str(row.get('quien_envia', 'N/A'))
+                detalles.append(f"<b>{ot}</b> ({obra} | {solicitante})")
+            return "<br>".join(detalles)
 
-            df_listos = df_estatus[(df_estatus['estado'] == 'Terminado') & (df_estatus['estado_despacho'] != 'Despachado')]
-            listos_count = len(df_listos)
+        # --- CÁLCULO DE CANTIDADES Y TEXTOS ---
+        df_cola = df_pend.iloc[2:] if len(df_pend) > 2 else pd.DataFrame()
+        df_proc = df_pend.head(2)
+        
+        pendientes_count = len(df_cola)
+        en_proceso_count = len(df_proc)
+        
+        texto_cola = obtener_detalle_tarjetas(df_cola, "A la espera de corte")
+        texto_en_proceso = obtener_detalle_tarjetas(df_proc, "Ninguno en máquina")
 
-            hoy_estatus = datetime.now()
-            inicio_semana = (hoy_estatus - timedelta(days=hoy_estatus.weekday())).date()
-            df_desp = df_estatus[(df_estatus['estado'] == 'Terminado') & (df_estatus['estado_despacho'] == 'Despachado')].copy()
-            df_desp['fecha_termino_dt'] = pd.to_datetime(df_desp['fecha_termino'], format='mixed', errors='coerce').dt.date
-            despachados_semana = len(df_desp[df_desp['fecha_termino_dt'] >= inicio_semana])
+        df_listos = df_estatus[(df_estatus['estado'] == 'Terminado') & (df_estatus['estado_despacho'] != 'Despachado')]
+        listos_count = len(df_listos)
+        texto_listos = obtener_detalle_tarjetas(df_listos, "Esperando retiro")
 
-            c_est1, c_est2, c_est3, c_est4 = st.columns(4)
-            c_est1.markdown(f'<div style="background-color:#f8d7da;padding:15px;border-radius:10px;border-left:5px solid #dc3545;height:100%;"><h5>⏳ En Cola</h5><h1>{pendientes_count}</h1><span style="font-size:12px;">A la espera de corte</span></div>', unsafe_allow_html=True)
-            c_est2.markdown(f'<div style="background-color:#fff3cd;padding:15px;border-radius:10px;border-left:5px solid #ffc107;height:100%;"><h5>⚙️ En Proceso</h5><h1>{en_proceso_count}</h1><span style="font-size:12px;"><b>{texto_en_proceso}</b></span></div>', unsafe_allow_html=True)
-            c_est3.markdown(f'<div style="background-color:#d4edda;padding:15px;border-radius:10px;border-left:5px solid #28a745;height:100%;"><h5>📦 Listos (Taller)</h5><h1>{listos_count}</h1><span style="font-size:12px;">Esperando retiro</span></div>', unsafe_allow_html=True)
-            c_est4.markdown(f'<div style="background-color:#d1ecf1;padding:15px;border-radius:10px;border-left:5px solid #17a2b8;height:100%;"><h5>🚚 Despachados</h5><h1>{despachados_semana}</h1><span style="font-size:12px;">Entregados esta semana</span></div>', unsafe_allow_html=True)
+        hoy_estatus = datetime.now()
+        inicio_semana = (hoy_estatus - timedelta(days=hoy_estatus.weekday())).date()
+        df_desp = df_estatus[(df_estatus['estado'] == 'Terminado') & (df_estatus['estado_despacho'] == 'Despachado')].copy()
+        df_desp['fecha_termino_dt'] = pd.to_datetime(df_desp['fecha_termino'], format='mixed', errors='coerce').dt.date
+        df_despachados_semana = df_desp[df_desp['fecha_termino_dt'] >= inicio_semana]
+        despachados_semana = len(df_despachados_semana)
+        texto_despachados = obtener_detalle_tarjetas(df_despachados_semana, "Entregados esta semana")
+
+        # --- DIBUJADO DE LAS TARJETAS HTML ---
+        c_est1, c_est2, c_est3, c_est4 = st.columns(4)
+        c_est1.markdown(f'<div style="background-color:#f8d7da;padding:15px;border-radius:10px;border-left:5px solid #dc3545;height:100%;"><h5>⏳ En Cola</h5><h1>{pendientes_count}</h1><span style="font-size:12px;">{texto_cola}</span></div>', unsafe_allow_html=True)
+        c_est2.markdown(f'<div style="background-color:#fff3cd;padding:15px;border-radius:10px;border-left:5px solid #ffc107;height:100%;"><h5>⚙️ En Proceso</h5><h1>{en_proceso_count}</h1><span style="font-size:12px;">{texto_en_proceso}</span></div>', unsafe_allow_html=True)
+        c_est3.markdown(f'<div style="background-color:#d4edda;padding:15px;border-radius:10px;border-left:5px solid #28a745;height:100%;"><h5>📦 Listos (Taller)</h5><h1>{listos_count}</h1><span style="font-size:12px;">{texto_listos}</span></div>', unsafe_allow_html=True)
+        c_est4.markdown(f'<div style="background-color:#d1ecf1;padding:15px;border-radius:10px;border-left:5px solid #17a2b8;height:100%;"><h5>🚚 Despachados</h5><h1>{despachados_semana}</h1><span style="font-size:12px;">{texto_despachados}</span></div>', unsafe_allow_html=True)
 
     except Exception as e: st.error(f"Error cargando estatus: {e}")
         
