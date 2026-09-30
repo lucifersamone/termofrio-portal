@@ -1417,14 +1417,14 @@ with tabs_admin[0]:
                 df_pend['fecha_recepcion_dt'] = pd.to_datetime(df_pend['fecha_recepcion'], format='mixed', errors='coerce')
                 df_pend = df_pend.sort_values(by=['sort_urgencia', 'fecha_recepcion_dt'])
                 
-                # --- NUEVA FUNCIÓN PARA FORMATEAR DETALLES (UI CON MARCO DE SCROLL) ---
+                # --- NUEVA FUNCIÓN PARA FORMATEAR DETALLES (CORRECCIÓN DE RENDERIZADO HTML) ---
         def obtener_detalle_tarjetas(df_filtrado, texto_vacio):
             if df_filtrado.empty:
-                return f"""
-                <div style='background-color: rgba(255,255,255,0.4); border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; padding: 10px; min-height: 50px; display: flex; align-items: center; justify-content: center;'>
-                    <span style='color: #666; font-style: italic;'>{texto_vacio}</span>
-                </div>
-                """
+                return (
+                    "<div style='background-color: rgba(255,255,255,0.4); border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; padding: 10px; min-height: 50px; display: flex; align-items: center; justify-content: center;'>"
+                    f"<span style='color: #666; font-style: italic;'>{texto_vacio}</span>"
+                    "</div>"
+                )
             
             detalles = []
             for _, row in df_filtrado.iterrows():
@@ -1441,6 +1441,14 @@ with tabs_admin[0]:
                     f"<span style='font-size: 11px; color: #555;'>🏢 {obra}</span>"
                     "</div>"
                 )
+                detalles.append(item)
+                
+                return (
+                "<div style='background-color: rgba(255,255,255,0.5); border: 1px solid rgba(0,0,0,0.15); border-radius: 6px; padding: 8px 8px 0px 8px; box-shadow: inset 0px 2px 4px rgba(0,0,0,0.04); max-height: 180px; overflow-y: auto; margin-top: 5px;'>"
+                f"{''.join(detalles)}"
+                "</div>"
+                )
+        
                 detalles.append(item)
                 
             # Contenedor con marco visual claro para el área de scroll
