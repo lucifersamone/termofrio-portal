@@ -1420,7 +1420,8 @@ with tabs_admin[0]:
                 # --- NUEVA FUNCIÓN PARA FORMATEAR DETALLES (UI MEJORADA) ---
         def obtener_detalle_tarjetas(df_filtrado, texto_vacio):
             if df_filtrado.empty:
-                return f"<div style='height: 130px; overflow-y: auto; padding-right: 5px;'>{''.join(detalles)}</div>"
+                return f"<div style='height: 130px; overflow-y: auto; color: #666; font-style: italic;'>{texto_vacio}</div>"
+            
             detalles = []
             for _, row in df_filtrado.iterrows():
                 ot = str(row.get('num_pedido', ''))
@@ -1430,7 +1431,6 @@ with tabs_admin[0]:
                 if solicitante in ["<NA>", "nan", "NaN", "None", "", "N/A"]:
                     solicitante = "No registrado"
                 
-                # Diseño de cada item: OT y Solicitante en negrita arriba, Obra sutil abajo
                 item = f"""
                 <div style='margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid rgba(0,0,0,0.05); line-height: 1.2;'>
                     <span style='font-size: 13px; color: #111;'><b>{ot} | 👤 {solicitante}</b></span><br>
@@ -1438,9 +1438,8 @@ with tabs_admin[0]:
                 </div>
                 """
                 detalles.append(item)
-            
-                    # Contenedor con barra de desplazamiento (Scroll) y altura fija de 85px
-                return f"<div style='height: 85px; overflow-y: auto; padding-right: 5px;'>{''.join(detalles)}</div>"
+                
+            return f"<div style='height: 130px; overflow-y: auto; padding-right: 5px;'>{''.join(detalles)}</div>"
 
         # --- CÁLCULO DE CANTIDADES Y TEXTOS ---
         df_cola = df_pend.iloc[2:] if len(df_pend) > 2 else pd.DataFrame()
