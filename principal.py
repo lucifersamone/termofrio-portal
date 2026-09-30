@@ -1417,10 +1417,10 @@ with tabs_admin[0]:
                 df_pend['fecha_recepcion_dt'] = pd.to_datetime(df_pend['fecha_recepcion'], format='mixed', errors='coerce')
                 df_pend = df_pend.sort_values(by=['sort_urgencia', 'fecha_recepcion_dt'])
                 
-                # --- NUEVA FUNCIÓN PARA FORMATEAR DETALLES (UI MEJORADA) ---
+                # --- NUEVA FUNCIÓN PARA FORMATEAR DETALLES (ALTURA DINÁMICA) ---
         def obtener_detalle_tarjetas(df_filtrado, texto_vacio):
             if df_filtrado.empty:
-                return f"<div style='height: 130px; overflow-y: auto; color: #666; font-style: italic;'>{texto_vacio}</div>"
+                return f"<div style='color: #666; font-style: italic; padding-top: 10px;'>{texto_vacio}</div>"
             
             detalles = []
             for _, row in df_filtrado.iterrows():
@@ -1431,7 +1431,6 @@ with tabs_admin[0]:
                 if solicitante in ["<NA>", "nan", "NaN", "None", "", "N/A"]:
                     solicitante = "No registrado"
                 
-                # Ajustamos la construcción del HTML para evitar que se interprete como código
                 item = (
                     "<div style='margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid rgba(0,0,0,0.05); line-height: 1.2;'>"
                     f"<span style='font-size: 13px; color: #111;'><b>{ot} | 👤 {solicitante}</b></span><br>"
@@ -1440,7 +1439,9 @@ with tabs_admin[0]:
                 )
                 detalles.append(item)
                 
-            return f"<div style='height: 130px; overflow-y: auto; padding-right: 5px;'>{''.join(detalles)}</div>"
+            # max-height: 150px permite mostrar hasta ~3 pedidos cómodamente sin scroll. 
+            # Si hay 4 o más, aparecerá la barra.
+            return f"<div style='max-height: 150px; overflow-y: auto; padding-right: 5px; margin-top: 10px;'>{''.join(detalles)}</div>"
 
         # --- CÁLCULO DE CANTIDADES Y TEXTOS ---
         df_cola = df_pend.iloc[2:] if len(df_pend) > 2 else pd.DataFrame()
