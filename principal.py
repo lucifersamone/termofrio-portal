@@ -969,22 +969,23 @@ if st.session_state.rol == "cliente":
                 
             df_pendientes = df_mis_pedidos[df_mis_pedidos['Estado'] == 'Pendiente'].copy()
             if not df_pendientes.empty:
-                    st.divider()
-                    st.markdown("#### 🗑️ Anular Pedido")
-                    col_del1, col_del2 = st.columns([3, 1])
-                    with col_del1:
-                        df_pendientes['display name'] = "Pedido Nº " + df_pendientes['num_pedido'].astype(str) + " / Obra: " + df_pendientes['Obra'].astype(str)
-                        pedido_a_borrar = st.selectbox("Selecciona el pedido a anular:", df_pendientes['display name'])
-                    with col_del2:
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        if st.button("🚫 Anular Seleccionado", type="primary"):
-                            id_borrar = df_pendientes[df_pendientes['display_name'] == pedido_a_borrar].iloc[0]['id']
-                            cursor = conn.cursor()
-                            cursor.execute("DELETE FROM items_pedido WHERE pedido_id=?", (int(id_borrar),))
-                            cursor.execute("DELETE FROM pedidos WHERE id=?", (int(id_borrar),))
-                            conn.commit()
-                            st.success("✅ Pedido anulado.")
-                            st.rerun()
+                st.divider()
+                st.markdown("#### 🗑️ Anular Pedido")
+                col_del1, col_del2 = st.columns([3, 1])
+                with col_del1:
+                    # Creamos la columna con guion bajo asegurando que coincida
+                    df_pendientes['display_name'] = "Pedido Nº " + df_pendientes['num_pedido'].astype(str) + " / Obra: " + df_pendientes['Obra'].astype(str)
+                    pedido_a_borrar = st.selectbox("Selecciona el pedido a anular:", df_pendientes['display_name'])
+                with col_del2:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("🚫 Anular Seleccionado", type="primary"):
+                        id_borrar = df_pendientes[df_pendientes['display_name'] == pedido_a_borrar].iloc[0]['id']
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM items_pedido WHERE pedido_id = ?", (int(id_borrar),))
+                        cursor.execute("DELETE FROM pedidos WHERE id = ?", (int(id_borrar),))
+                        conn.commit()
+                        st.success("¡Pedido anulado con éxito!")
+                        st.rerun()
             else: st.info("Aún no tienes pedidos registrados.")
             conn.close()
         except Exception as e: st.error(f"Error: {e}")
