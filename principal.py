@@ -1404,7 +1404,7 @@ with tabs_admin[0]:
     st.subheader("🚥 Estatus de Fabricación en Taller")
     try:
         conn_estatus = get_connection()
-        df_estatus = pd.read_sql("SELECT num_pedido, obra_codigo, estado, nivel_urgencia, fecha_recepcion, fecha_termino, estado_despacho FROM pedidos", conn_estatus)
+        df_estatus = pd.read_sql("SELECT num_pedido, obra_codigo, quien_envia, estado, nivel_urgencia, fecha_recepcion, fecha_termino, estado_despacho FROM pedidos", conn_estatus)
         conn_estatus.close()
 
         if not df_estatus.empty:
