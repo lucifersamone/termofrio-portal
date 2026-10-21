@@ -821,7 +821,7 @@ if st.session_state.rol == "cliente":
 
             # -----------------------------------------------------
                     # NUEVO BLOQUE: Visor Comprobante del Cliente
-                    # -----------------------------------------------------
+                    # ------------------------------------------------------
             filas_html = ""
             suma_kilos_cliente = 0.0
             material_cliente = "No especificado"
