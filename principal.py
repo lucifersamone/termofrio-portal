@@ -299,9 +299,9 @@ USUARIOS = {
             "ceco": ["2-12-022"],
             "obra": ["TF- 13618 NORMAILIZACION HOSPITAL CURACAUTIN"]
     },
-        "nalquintui": {
-            "clave": "1234", "rol": "cliente", "nombre": "Nicol Alquintui",
-            "correo": "nalquintui@termofrio.cl",
+        "naliquintui": {
+            "clave": "1234", "rol": "cliente", "nombre": "Nicol Aliquintui",
+            "correo": "naliquintui@termofrio.cl",
             "tf": ["CC08"],
             "ceco": ["4-08-002"],
             "obra": ["EXTRAS 4-08-002"]
