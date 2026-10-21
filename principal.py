@@ -318,7 +318,6 @@ USUARIOS = {
     "falvarez": {"clave": "1234", "rol": "cliente", "nombre": "Francisco Alvarez", "correo": "falvarez@termofrio.cl"},
     "adiaz": {"clave": "1234", "rol": "cliente", "nombre": "Ariel Diaz", "correo": "adiaza@termofrio.cl"},
     "amarin": {"clave": "1234", "rol": "cliente", "nombre": "Axel Marin", "correo": "amarin@termofrio.cl"},
-    "rmunoz": {"clave": "1234", "rol": "cliente", "nombre": "Roberto Muñoz", "correo": "rmunoz@termofrio.cl"},
 }
 
 LISTA_DESCRIPCIONES = [
@@ -1014,18 +1013,18 @@ if st.session_state.rol == "cliente":
 
         with col_m1:
             if len(tfs_asignados) > 1:
-                # Usuario con VARIAS obras: Puede elegir la obra, el TF se bloquea y autocompleta
+                # VARIAS obras fijas
                 obra_manual = st.selectbox("Obra Destino", obras_asignadas)
                 idx = obras_asignadas.index(obra_manual)
                 tf_manual = st.text_input("Código TF ó CC", value=tfs_asignados[idx], disabled=True)
                 ceco_auto = cecos_asignados[idx]
             elif len(tfs_asignados) == 1:
-                # Usuario como NICOL (1 sola obra): Todo bloqueado
+                # 1 SOLA obra fija (Caso Nicol)
                 tf_manual = st.text_input("Código TF ó CC", value=tfs_asignados[0], disabled=True)
                 obra_manual = st.text_input("Obra Destino", value=obras_asignadas[0], disabled=True)
                 ceco_auto = cecos_asignados[0]
             else:
-                # Usuario EXPERTO (Sin obras fijas): Todo liberado para escribir
+                # MODO EXPERTO (Cualquier obra)
                 tf_manual = st.text_input("Código TF ó CC (Ej: 13655 o CC02)", key="tf_m_cli")
                 ceco_auto, obra_auto = buscar_datos_por_tf(tf_manual)
                 index_obra = 0
@@ -1036,17 +1035,14 @@ if st.session_state.rol == "cliente":
 
         with col_m2:
             if len(tfs_asignados) >= 1: 
-                # Si tiene 1 o varias obras, el CECO siempre se bloquea porque viene de la base de datos
                 ceco_manual = st.text_input("CECO", value=ceco_auto, disabled=True)
             else:
-                # Usuario EXPERTO: Puede escribir el CECO
                 default_ceco = ceco_auto if ceco_auto else ""
                 if tf_manual.strip().upper() == "CC02": default_ceco = "4-02-002 EXTRAS"
                 ceco_manual = st.text_input("CECO", value=default_ceco)
             
-            men_manual = st.text_input("MEN (Opcional)")
-            # ESTA ES LA LÍNEA QUE FALTABA:
-            men_manual = st.text_input("MEN (Opcional)")
+            # EL KEY AQUÍ EVITA EL ERROR ROJO
+            men_manual = st.text_input("MEN (Opcional)", key="men_unico")
             
         col_mat, col_aisl = st.columns([2, 1])
         with col_mat: mat_manual = st.selectbox("🛠️ Material General", get_materiales_disponibles_cliente(), key="mat_manual_cliente")
