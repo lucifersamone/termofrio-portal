@@ -1014,35 +1014,37 @@ if st.session_state.rol == "cliente":
 
         with col_m1:
             if len(tfs_asignados) > 1:
-                obra_manual = st.selectbox("🏗️ Obra Destino", obras_asignadas)
+                # Usuario con VARIAS obras: Puede elegir la obra, el TF se bloquea y autocompleta
+                obra_manual = st.selectbox("Obra Destino", obras_asignadas)
                 idx = obras_asignadas.index(obra_manual)
                 tf_manual = st.text_input("Código TF ó CC", value=tfs_asignados[idx], disabled=True)
                 ceco_auto = cecos_asignados[idx]
             elif len(tfs_asignados) == 1:
+                # Usuario como NICOL (1 sola obra): Todo bloqueado
                 tf_manual = st.text_input("Código TF ó CC", value=tfs_asignados[0], disabled=True)
-                obra_manual = st.text_input("🏗️ Obra Destino", value=obras_asignadas[0], disabled=True)
+                obra_manual = st.text_input("Obra Destino", value=obras_asignadas[0], disabled=True)
                 ceco_auto = cecos_asignados[0]
             else:
-                # 1. Bloqueamos el input del TF
-                tf_manual = st.text_input("Código TF ó CC (Ej: 13655 o CC02)", key="tf_m_cli", value=tfs_asignados[0] if tfs_asignados else "", disabled=True)
+                # Usuario EXPERTO (Sin obras fijas): Todo liberado para escribir
+                tf_manual = st.text_input("Código TF ó CC (Ej: 13655 o CC02)", key="tf_m_cli")
                 ceco_auto, obra_auto = buscar_datos_por_tf(tf_manual)
                 index_obra = 0
                 if obra_auto and obra_auto in lista_obras: index_obra = lista_obras.index(obra_auto)
-        
-                # 2. Bloqueamos el selectbox de la Obra Destino
-                obra_manual = st.selectbox("Obra Destino", lista_obras + ["Otra (Escribir manual)"], index=index_obra, disabled=True)
+                obra_manual = st.selectbox("Obra Destino", lista_obras + ["Otra (Escribir manual)"], index=index_obra)
                 if obra_manual == "Otra (Escribir manual)": 
-                    obra_manual = st.text_input("Escribir nombre de la obra:", value=obra_auto if obra_auto else "", disabled=True)
+                    obra_manual = st.text_input("Escribir nombre de la obra:", value=obra_auto if obra_auto else "")
 
         with col_m2:
-            if len(tfs_asignados) >= 1:
+            if len(tfs_asignados) >= 1: 
+                # Si tiene 1 o varias obras, el CECO siempre se bloquea porque viene de la base de datos
                 ceco_manual = st.text_input("CECO", value=ceco_auto, disabled=True)
             else:
+                # Usuario EXPERTO: Puede escribir el CECO
                 default_ceco = ceco_auto if ceco_auto else ""
                 if tf_manual.strip().upper() == "CC02": default_ceco = "4-02-002 EXTRAS"
-                # 3. Bloqueamos el input del CECO
-                ceco_manual = st.text_input("CECO", value=default_ceco, disabled=True)
+                ceco_manual = st.text_input("CECO", value=default_ceco)
             
+            men_manual = st.text_input("MEN (Opcional)")
             # ESTA ES LA LÍNEA QUE FALTABA:
             men_manual = st.text_input("MEN (Opcional)")
             
