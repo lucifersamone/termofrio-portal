@@ -306,6 +306,8 @@ USUARIOS = {
             "obra": ["EXTRAS 4-08-002"]
     },
 
+    #act nombre
+
     "cbustos": {"clave": "1234", "rol": "cliente", "nombre": "Cristian Bustos", "correo": "cristian.bustos@ejemplo.cl"},
     "jguzman": {"clave": "1234", "rol": "cliente", "nombre": "Joel Guzman", "correo": "jguzman@termofrio.cl"},
     "pramirez": {"clave": "1234", "rol": "cliente", "nombre": "Paulo Ramirez", "correo": "pramirez@termofrio.cl"},
