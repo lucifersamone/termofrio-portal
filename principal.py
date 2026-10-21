@@ -1034,16 +1034,16 @@ if st.session_state.rol == "cliente":
                     obra_manual = st.text_input("Escribir nombre de la obra:", value=obra_auto if obra_auto else "", disabled=True)
 
         with col_m2:
-            if len(tfs_asignados) >= 1: 
+            if len(tfs_asignados) >= 1:
                 ceco_manual = st.text_input("CECO", value=ceco_auto, disabled=True)
             else:
                 default_ceco = ceco_auto if ceco_auto else ""
                 if tf_manual.strip().upper() == "CC02": default_ceco = "4-02-002 EXTRAS"
                 # 3. Bloqueamos el input del CECO
                 ceco_manual = st.text_input("CECO", value=default_ceco, disabled=True)
-                with col_m3:
-                    quien_manual = st.text_input("👤 Solicitante", value=st.session_state.nombre_usuario, disabled=True)
-                    correo_manual = st.text_input("📧 Correo Electrónico", value=st.session_state.correo_usuario, disabled=bool(st.session_state.correo_usuario))
+            
+            # ESTA ES LA LÍNEA QUE FALTABA:
+            men_manual = st.text_input("MEN (Opcional)")
             
         col_mat, col_aisl = st.columns([2, 1])
         with col_mat: mat_manual = st.selectbox("🛠️ Material General", get_materiales_disponibles_cliente(), key="mat_manual_cliente")
