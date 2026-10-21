@@ -1022,24 +1022,28 @@ if st.session_state.rol == "cliente":
                 obra_manual = st.text_input("🏗️ Obra Destino", value=obras_asignadas[0], disabled=True)
                 ceco_auto = cecos_asignados[0]
             else:
-                tf_manual = st.text_input("Código TF ó CC (Ej: 13655 o CC02)", key="tf_m_cli")
+                # 1. Bloqueamos el input del TF
+                tf_manual = st.text_input("Código TF ó CC (Ej: 13655 o CC02)", key="tf_m_cli", value=tfs_asignados[0] if tfs_asignados else "", disabled=True)
                 ceco_auto, obra_auto = buscar_datos_por_tf(tf_manual)
                 index_obra = 0
                 if obra_auto and obra_auto in lista_obras: index_obra = lista_obras.index(obra_auto)
-                obra_manual = st.selectbox("🏗️ Obra Destino", lista_obras + ["Otra (Escribir manual)"], index=index_obra)
-                if obra_manual == "Otra (Escribir manual)": obra_manual = st.text_input("Escribir nombre de la obra:", value=obra_auto if obra_auto else "")
+        
+                # 2. Bloqueamos el selectbox de la Obra Destino
+                obra_manual = st.selectbox("Obra Destino", lista_obras + ["Otra (Escribir manual)"], index=index_obra, disabled=True)
+                if obra_manual == "Otra (Escribir manual)": 
+                    obra_manual = st.text_input("Escribir nombre de la obra:", value=obra_auto if obra_auto else "", disabled=True)
 
         with col_m2:
-            if len(tfs_asignados) >= 1: ceco_manual = st.text_input("CECO", value=ceco_auto, disabled=True)
+            if len(tfs_asignados) >= 1: 
+                ceco_manual = st.text_input("CECO", value=ceco_auto, disabled=True)
             else:
                 default_ceco = ceco_auto if ceco_auto else ""
                 if tf_manual.strip().upper() == "CC02": default_ceco = "4-02-002 EXTRAS"
-                ceco_manual = st.text_input("CECO", value=default_ceco)
-            men_manual = st.text_input("MEN (Opcional)")
-            
-        with col_m3:
-            quien_manual = st.text_input("👤 Solicitante", value=st.session_state.nombre_usuario, disabled=True)
-            correo_manual = st.text_input("📧 Correo Electrónico", value=st.session_state.correo_usuario, disabled=bool(st.session_state.correo_usuario))
+                # 3. Bloqueamos el input del CECO
+                ceco_manual = st.text_input("CECO", value=default_ceco, disabled=True)
+                with col_m3:
+                    quien_manual = st.text_input("👤 Solicitante", value=st.session_state.nombre_usuario, disabled=True)
+                    correo_manual = st.text_input("📧 Correo Electrónico", value=st.session_state.correo_usuario, disabled=bool(st.session_state.correo_usuario))
             
         col_mat, col_aisl = st.columns([2, 1])
         with col_mat: mat_manual = st.selectbox("🛠️ Material General", get_materiales_disponibles_cliente(), key="mat_manual_cliente")
