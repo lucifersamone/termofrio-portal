@@ -302,6 +302,7 @@ USUARIOS = {
         "nalquintui": {
             "clave": "1234", "rol": "cliente", "nombre": "Nicol Alquintui",
             "correo": "nalquintui@termofrio.cl",
+            "tf": ["CC08"],
             "ceco": ["4-08-002"],
             "obra": ["EXTRAS 4-08-002"]
     },
