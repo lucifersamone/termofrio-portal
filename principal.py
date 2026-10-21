@@ -306,7 +306,7 @@ USUARIOS = {
             "obra": ["EXTRAS 4-08-002"]
     },
 
-#actualizar
+#actualizars
 
 
     "cbustos": {"clave": "1234", "rol": "cliente", "nombre": "Cristian Bustos", "correo": "cristian.bustos@ejemplo.cl"},
