@@ -1007,7 +1007,7 @@ if st.session_state.rol == "cliente":
         df_obras_m = get_obras_ceco_df()
         lista_obras = ["Seleccione Obra..."] + df_obras_m['nombre'].tolist() if not df_obras_m.empty else ["Seleccione Obra..."]
 
-        col_m1, col_m2, col_m3 = st.columns(3)
+        col_m1, col_m2 = st.columns(2)
         tfs_asignados = st.session_state.tf_usuario
         obras_asignadas = st.session_state.obra_usuario
         cecos_asignados = st.session_state.ceco_usuario
