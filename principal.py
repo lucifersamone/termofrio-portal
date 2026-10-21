@@ -826,6 +826,8 @@ if st.session_state.rol == "cliente":
             suma_kilos_cliente = 0.0
             material_cliente = "No especificado"
 
+            df_items_raw = pd.read_sql(f"SELECT * FROM items_pedido WHERE pedido_id={id_ver}", conn)
+
             if not df_items_raw.empty:
                 if 'material' in df_items_raw.columns:
                     material_cliente = str(df_items_raw.iloc[0].get('material', 'Galvanizado')).strip()
