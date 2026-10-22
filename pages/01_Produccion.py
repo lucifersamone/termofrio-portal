@@ -2210,14 +2210,16 @@ with tab3:
 
             if st.form_submit_button("Guardar Precio"):
                 if n_item.strip():
-                    if n_item.strip():
-                        try:
-                            conn=get_connection(); c=conn.cursor()
-                            c.execute("INSERT INTO lista_precios (item, unidad, precio, material) VALUES (%s,%s,%s,%s)", (n_item.strip(), n_uni, n_prec, n_mat))
-                            conn.commit(); conn.close(); st.success("Precio Guardado."); st.rerun()
-                        except Exception as e: st.error(e)
-                    else:
-                        st.warning("El nombre del ítem es obligatorio.")
+                    try:
+                        conn=get_connection(); c=conn.cursor()
+                        c.execute("INSERT INTO lista_precios (item, unidad, precio, material) VALUES (%s,%s,%s,%s)", (n_item.strip(), n_uni, n_prec, n_mat))
+                        conn.commit(); conn.close()
+                        st.success("Precio Guardado.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(e)
+                else:
+                    st.warning("El nombre del ítem es obligatorio.")
         with col_pr2:
             conn = get_connection()
             try: df_pre = pd.read_sql("SELECT id as id_bd, item, material, precio FROM lista_precios", conn)
