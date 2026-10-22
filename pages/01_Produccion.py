@@ -2191,13 +2191,25 @@ with tab3:
         with col_pr1:
             with st.form("form_nuevo_precio"):
                 st.caption("Añadir un solo precio nuevo")
-                n_item = st.text_input("Nombre del Ítem (Ej: DUCTO RECTO)")
-                c1_f, c2_f = st.columns(2)
-                with c1_f: n_mat = st.selectbox("Material", ["Galvanizado", "Pieza Especial", "FE", "INOX", "Otro"])
-                with c2_f: n_uni = st.selectbox("Unidad", ["kg", "un", "m2", "ml"])
-                n_prec = st.number_input("Precio ($)", min_value=0, step=100)
-                
-                if st.form_submit_button("Guardar Precio"):
+            n_item = st.text_input("Nombre del Ítem (Ej: DUCTO RECTO)")
+            
+            # ESTA ES LA LÍNEA QUE FALTABA
+            c1_f, c2_f = st.columns(2)
+            
+            with c1_f:
+                opcion_mat = st.selectbox("Material", ["Galvanizado", "Pieza Especial", "FE", "INOX", "Otro"])
+                if opcion_mat == "Otro":
+                    n_mat = st.text_input("Escribir Material (Ej: Aluminio)")
+                else:
+                    n_mat = opcion_mat
+            
+            with c2_f: 
+                n_uni = st.selectbox("Unidad", ["kg", "un", "m2", "ml"])
+            
+            n_prec = st.number_input("Precio ($)", min_value=0, step=100)
+
+            if st.form_submit_button("Guardar Precio"):
+                if n_item.strip():
                     if n_item.strip():
                         try:
                             conn=get_connection(); c=conn.cursor()
