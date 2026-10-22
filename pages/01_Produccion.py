@@ -2184,7 +2184,7 @@ with tab3:
                     kg_a = float(r.get('KG_ADICIONALES', 0.0))
                     c.execute("INSERT INTO maestro_obras (tf, ceco, nombre, kg_contrato, kg_adicionales) VALUES (%s,%s,%s,%s,%s)", (tf_v, ceco_v, nom_v, kg_v, kg_a))
                 conn.commit(); conn.close(); st.success("Obras actualizadas."); st.rerun()
-
+#
 with tab4:
     st.header("📊 Informe Detallado para Carátula EDP")
     conn = get_connection()
