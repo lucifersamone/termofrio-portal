@@ -258,10 +258,10 @@ USUARIOS = {
         "correo": "navile@termofrio.cl", 
         "tf": ["13655"], "ceco": ["2-11-063"], "obra": ["TF-13655 SANTIAGO WEST TEMPLE"]
     },
-    "mrubilar": {
-        "clave": "5678", "rol": "cliente", "nombre": "Miguel Rubilar",
-        "correo": "miguel.rubilar@ejemplo.cl", 
-        "tf": ["13655"], "ceco": ["2-11-063"], "obra": ["TF-13655 SANTIAGO WEST TEMPLE"]
+    "falvarez": {
+        "clave": "1234", "rol": "cliente", "nombre": "Francisco Alvarez",
+        "correo": "falvarez@termofrio.cl", 
+        "tf": ["13962"], "ceco": ["2-14-026"], "obra": ["TF-13962 SANTIAGO WEST TEMPLE"]
     },
     
     "ainostroza": {
@@ -323,7 +323,7 @@ USUARIOS = {
     "mcataldo": {"clave": "1234", "rol": "cliente", "nombre": "Marco Cataldo", "correo": "mcataldo@termofrio.cl"},
     "falvarez": {"clave": "1234", "rol": "cliente", "nombre": "Francisco Alvarez", "correo": "falvarez@termofrio.cl"},
     "adiaz": {"clave": "1234", "rol": "cliente", "nombre": "Ariel Diaz", "correo": "adiaza@termofrio.cl"},
-    "amarin": {"clave": "1234", "rol": "cliente", "nombre": "Axel Marin", "correo": "amarin@termofrio.cl"},
+    "jpadilla": {"clave": "1234", "rol": "cliente", "nombre": "Juan Padilla", "correo": "jpadilla@termofrio.cl"},
 }
 
 LISTA_DESCRIPCIONES = [
