@@ -267,9 +267,9 @@ USUARIOS = {
     "ainostroza": {
         "clave": "1234", "rol": "cliente", "nombre": "Alejandro Inostroza",
         "correo": "ainostroza@termofrio.cl", 
-        "tf": ["13784", "13817"], 
-        "ceco": ["2-12-023", "2-12-024"],
-        "obra": ["TF – 13784 ACHS EDIFICIO B PROVIDENCIA", "TF-13817 ACHS - EDIFICIO K1 PISO 1 - EDIFICIO C"]
+        "tf": ["13921"], 
+        "ceco": ["2-14-024"],
+        "obra": ["TF-13921 HOTEL OLA COSTANERA"]
     },
     "malvina": {
         "clave": "1234", "rol": "cliente", "nombre": "Miguel Alviña",
@@ -281,9 +281,9 @@ USUARIOS = {
     "rinostroza": {
         "clave": "1234", "rol": "cliente", "nombre": "Rolando Inostroza",
         "correo": "rinostroza@termofrio.cl", 
-        "tf": ["13784", "13817"], 
-        "ceco": ["2-12-023", "2-12-024"],
-        "obra": ["TF – 13784 ACHS EDIFICIO B PROVIDENCIA", "TF-13817 ACHS - EDIFICIO K1 PISO 1 - EDIFICIO C"]
+        "tf": ["13921"], 
+        "ceco": ["2-14-024"],
+        "obra": ["TF-13921 HOTEL OLA COSTANERA"]
     },
     "salvarez": {
         "clave": "1234", "rol": "cliente", "nombre": "Sebastian Alvarez",
