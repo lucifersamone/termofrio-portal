@@ -313,7 +313,14 @@ USUARIOS = {
                     "ceco": ["4-04-002"],
                     "obra": ["EXTRAS 4-04-002"]
     },
+    "jguzman": {
+                    "clave": "1234", "rol": "cliente", "nombre": "Joel Guzman",
+                    "correo": "jguzman@termofrio.cl",
+                    "tf": ["CC02"],
+                    "ceco": ["4-04-002"],
+                    "obra": ["EXTRAS 4-04-002"]
 
+    },
     #act nombre
 
     "jguzman": {"clave": "1234", "rol": "cliente", "nombre": "Joel Guzman", "correo": "jguzman@termofrio.cl"},
