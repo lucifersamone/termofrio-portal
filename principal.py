@@ -323,7 +323,6 @@ USUARIOS = {
     },
     #act nombre
 
-    "jguzman": {"clave": "1234", "rol": "cliente", "nombre": "Joel Guzman", "correo": "jguzman@termofrio.cl"},
     "pramirez": {"clave": "1234", "rol": "cliente", "nombre": "Paulo Ramirez", "correo": "pramirez@termofrio.cl"},
     "jabarca": {"clave": "1234", "rol": "cliente", "nombre": "Juan Pablo Abarca", "correo": "jabarca@termofrio.cl"},
     "jhidalgo": {"clave": "1234", "rol": "cliente", "nombre": "Jose Hidalgo", "correo": "jhidalgo@termofrio.cl"},
