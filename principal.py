@@ -319,7 +319,13 @@ USUARIOS = {
                     "tf": ["CC02"],
                     "ceco": ["4-04-002"],
                     "obra": ["EXTRAS 4-04-002"]
-
+    },
+    "jcontreras": {
+                        "clave": "1234", "rol": "cliente", "nombre": "Jose Contreras",
+                        "correo": "jcontreras@termofrio.cl",
+                        "tf": ["13940"],
+                        "ceco": ["2-14-025"],
+                        "obra": ["UMAS PAK-ETAPA 1"]
     },
     #act nombre
 
