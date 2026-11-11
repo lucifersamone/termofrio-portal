@@ -261,7 +261,7 @@ USUARIOS = {
     "falvarez": {
         "clave": "1234", "rol": "cliente", "nombre": "Francisco Alvarez",
         "correo": "falvarez@termofrio.cl", 
-        "tf": ["13962"], "ceco": ["2-14-026"], "obra": ["TF-13962 SANTIAGO WEST TEMPLE"]
+        "tf": ["13962"], "ceco": ["2-14-026"], "obra": ["TF-13962 PRICESMART"]
     },
     "ainostroza": {
         "clave": "1234", "rol": "cliente", "nombre": "Alejandro Inostroza",
