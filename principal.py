@@ -263,7 +263,6 @@ USUARIOS = {
         "correo": "falvarez@termofrio.cl", 
         "tf": ["13962"], "ceco": ["2-14-026"], "obra": ["TF-13962 SANTIAGO WEST TEMPLE"]
     },
-    
     "ainostroza": {
         "clave": "1234", "rol": "cliente", "nombre": "Alejandro Inostroza",
         "correo": "ainostroza@termofrio.cl", 
@@ -292,40 +291,47 @@ USUARIOS = {
         "ceco": ["2-12-023", "2-12-024"],
         "obra": ["TF – 13784 ACHS EDIFICIO B PROVIDENCIA", "TF-13817 ACHS - EDIFICIO K1 PISO 1 - EDIFICIO C"]
     },
-        "rmunoz": {
+    "rmunoz": {
             "clave": "1234", "rol": "cliente", "nombre": "Roberto Muñoz",
             "correo": "rmunoz@termofrio.cl", 
             "tf": ["13618"], 
             "ceco": ["2-12-022"],
             "obra": ["TF- 13618 NORMAILIZACION HOSPITAL CURACAUTIN"]
     },
-        "naliquintui": {
+    "naliquintui": {
             "clave": "1234", "rol": "cliente", "nombre": "Nicol Aliquintui",
             "correo": "naliquintui@termofrio.cl",
             "tf": ["CC08"],
             "ceco": ["4-08-002"],
             "obra": ["EXTRAS 4-08-002"]
     },
-        "cbustos": {
-                    "clave": "1234", "rol": "cliente", "nombre": "Cristian Bustos",
-                    "correo": "cbustos@termofrio.cl",
-                    "tf": ["CC02"],
-                    "ceco": ["4-04-002"],
-                    "obra": ["EXTRAS 4-04-002"]
+    "cbustos": {
+            "clave": "1234", "rol": "cliente", "nombre": "Cristian Bustos",
+            "correo": "cbustos@termofrio.cl",
+            "tf": ["CC02"],
+            "ceco": ["4-04-002"],
+            "obra": ["EXTRAS 4-04-002"]
     },
     "jguzman": {
-                    "clave": "1234", "rol": "cliente", "nombre": "Joel Guzman",
-                    "correo": "jguzman@termofrio.cl",
-                    "tf": ["CC02"],
-                    "ceco": ["4-04-002"],
-                    "obra": ["EXTRAS 4-04-002"]
+            "clave": "1234", "rol": "cliente", "nombre": "Joel Guzman",
+            "correo": "jguzman@termofrio.cl",
+            "tf": ["CC02"],
+            "ceco": ["4-04-002"],
+            "obra": ["EXTRAS 4-04-002"]
     },
     "jcontreras": {
-                    "clave": "1234", "rol": "cliente", "nombre": "Jose Contreras",
-                    "correo": "jcontreras@termofrio.cl",
-                    "tf": ["13940"],
-                    "ceco": ["2-14-025"],
-                    "obra": ["UMAS PAK-ETAPA 1"]
+            "clave": "1234", "rol": "cliente", "nombre": "Jose Contreras",
+            "correo": "jcontreras@termofrio.cl",
+            "tf": ["13940"],
+            "ceco": ["2-14-025"],
+            "obra": ["UMAS PAK-ETAPA 1"]
+    },
+     "mrubilar":  {
+            "clave": "1234", "rol": "cliente", "nombre": "Miguel Rubilar",
+            "correo": "mrubilar@termofrio.cl",
+            "tf": ["13940"],
+            "ceco": ["2-14-025"],
+            "obra": ["UMAS PAK-ETAPA 1"]
     },
     #act nombre
 
@@ -333,7 +339,6 @@ USUARIOS = {
     "jabarca": {"clave": "1234", "rol": "cliente", "nombre": "Juan Pablo Abarca", "correo": "jabarca@termofrio.cl"},
     "jhidalgo": {"clave": "1234", "rol": "cliente", "nombre": "Jose Hidalgo", "correo": "jhidalgo@termofrio.cl"},
     "mcataldo": {"clave": "1234", "rol": "cliente", "nombre": "Marco Cataldo", "correo": "mcataldo@termofrio.cl"},
-    "falvarez": {"clave": "1234", "rol": "cliente", "nombre": "Francisco Alvarez", "correo": "falvarez@termofrio.cl"},
     "adiaz": {"clave": "1234", "rol": "cliente", "nombre": "Ariel Diaz", "correo": "adiaza@termofrio.cl"},
     "jpadilla": {"clave": "1234", "rol": "cliente", "nombre": "Juan Padilla", "correo": "jpadilla@termofrio.cl"},
 }
