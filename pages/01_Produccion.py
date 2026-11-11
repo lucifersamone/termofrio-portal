@@ -1743,7 +1743,7 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
         with c2:
             st.subheader("📄 PASO 3: Generar PDF Final de Despacho")
             st.caption("Generación automática del PDF finalizado.")
-            term = dfp[dfp['estado']=='Terminado']
+            term = dfp[(dfp['estado'] == 'Terminado') & (dfp['estado_despacho'] != 'Despachado')]
             if not term.empty:
                 sel_pdf = st.selectbox("Seleccionar Pedido Terminado:", term['num_pedido'].astype(str) + " / " + term['obra_codigo'])
                 
