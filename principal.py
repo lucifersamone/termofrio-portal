@@ -1513,8 +1513,8 @@ with tabs_admin[0]:
             """
 
         # --- CÁLCULO DE CANTIDADES Y TEXTOS ---
-        df_cola = df_pend.iloc[2:] if len(df_pend) > 2 else pd.DataFrame()
-        df_proc = df_pend.head(2)
+        df_cola = df_pend.iloc[5:] if len(df_pend) > 5 else pd.DataFrame()
+        df_proc = df_pend.head(5)
         
         pendientes_count = len(df_cola)
         en_proceso_count = len(df_proc)
