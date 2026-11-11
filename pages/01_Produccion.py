@@ -1121,16 +1121,39 @@ with tab2:
         st.markdown("#### 🔍 Ver Detalle y Medidas de un Pedido")
         st.caption("Selecciona un pedido para revisar sus especificaciones, descargar el comprobante o generar el PDF oficial.")
         
+        # --- NUEVO: Botones para filtrar el estado ---
+        filtro_estado = st.radio(
+            "Filtrar lista por estado:",
+            ["Todos", "Pendiente", "En Proceso", "Terminado"],
+            horizontal=True
+        )
+        
         col_b1, col_b2 = st.columns([1, 2])
         
+        # Limpieza de columnas
         for c in ['num_pedido', 'obra_codigo', 'id']:
             if c in dfp.columns:
                 dfp[c] = dfp[c].astype(str).str.strip()
 
+        # --- NUEVO: Aplicar el filtro a la base de datos ---
+        if filtro_estado == "Todos":
+            df_filtrado = dfp
+        else:
+            df_filtrado = dfp[dfp['estado'] == filtro_estado]
+
+        fila_ped = None # Inicializamos en None por si la lista queda vacía
+
         with col_b1:
-            pedido_a_ver = st.selectbox("Seleccionar Pedido:", dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'], key="ver_detalles_ped_final")
-            if not dfp.empty:
-                fila_ped = dfp[dfp['num_pedido'].astype(str) + " / " + dfp['obra_codigo'] == pedido_a_ver].iloc[0]
+            # Solo mostramos el selectbox si hay pedidos que coincidan con el filtro
+            if not df_filtrado.empty:
+                pedido_a_ver = st.selectbox(
+                    "Seleccionar Pedido:", 
+                    df_filtrado['num_pedido'].astype(str) + " / " + df_filtrado['obra_codigo'], 
+                    key="ver_detalles_ped_final"
+                )
+                fila_ped = df_filtrado[df_filtrado['num_pedido'].astype(str) + " / " + df_filtrado['obra_codigo'] == pedido_a_ver].iloc[0]
+            else:
+                st.info(f"No hay pedidos en estado: {filtro_estado}")
 
         with col_b2:
             if fila_ped is not None:
@@ -1144,6 +1167,8 @@ with tab2:
                 obs_query = pd.read_sql(f"SELECT observaciones, men FROM pedidos WHERE TRIM(CAST(id AS TEXT))='{id_ver}'", conn_ver)
                 conn_ver.close()
                 
+                men_txt = ""
+                obs_txt = ""
                 if not obs_query.empty:
                     obs_val = obs_query.iloc[0]['observaciones']
                     obs_txt = str(obs_val).strip() if obs_val is not None and str(obs_val) not in ['None', 'nan'] else ""
