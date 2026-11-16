@@ -810,8 +810,20 @@ if st.session_state.rol == "cliente":
                         df_items_raw = pd.read_sql(f"SELECT * FROM items_pedido WHERE pedido_id={id_ver}", conn)
                         obs_query = pd.read_sql(f"SELECT * FROM pedidos WHERE id={id_ver}", conn)
                         fila_ped = obs_query.iloc[0]
-                        obs_txt = fila_ped['observaciones'] if 'observaciones' in fila_ped else ""
-                        men_txt = fila_ped['men'] if 'men' in fila_ped else ""
+                        
+                        # --- NUEVO: Procesamiento seguro de observaciones ---
+                        obs_val = fila_ped['observaciones'] if 'observaciones' in fila_ped else None
+                        obs_txt = str(obs_val).strip() if pd.notnull(obs_val) and str(obs_val) not in ['None', 'nan', ''] else ""
+                        
+                        men_val = fila_ped['men'] if 'men' in fila_ped else None
+                        men_txt = str(men_val).strip() if pd.notnull(men_val) and str(men_val) not in ['None', 'nan', ''] else ""
+
+                        # --- NUEVO: Despliegue del mensaje en pantalla ---
+                        if obs_txt or men_txt:
+                            msj = ""
+                            if men_txt: msj += f"**👤 MEN:** {men_txt} \n"
+                            if obs_txt: msj += f"**📝 Comentarios:** {obs_txt}"
+                            st.warning(msj)
 
                         if not df_items_raw.empty:
                             df_items_display = df_items_raw[['item_numero', 'descripcion', 'detalles', 'cantidad', 'espesor', 'peso_total']].rename(columns={
