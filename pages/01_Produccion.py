@@ -1568,25 +1568,39 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
 
                         if st.form_submit_button("Guardar Salida Parcial"):
                             if kilos_parcial >= 0 and comentario_parcial:
-                                from datetime import timedelta
+                                from datetime import timedelta, datetime
                                 
-                                conn=get_connection(); c=conn.cursor()
+                                conn = get_connection(); c = conn.cursor()
                                 fecha_ahora = datetime.now()
                                 
-                                # 1. Guardamos el registro de la entrega parcial
+                                # 1. Guardamos el registro de la entrega parcial (ESTO SE MANTIENE)
                                 c.execute("INSERT INTO entregas_parciales (pedido_id, fecha, kilos, comentario) VALUES (%s, %s, %s, %s)", (int(id_c), fecha_ahora, kilos_parcial, comentario_parcial))
                                 
-                                # ⏳ 2. EL EFECTO RELOJ DE ARENA: Calculamos nueva fecha límite (Hoy + 5 días)
-                                dias_extra = 5 # Cambia este 5 por un 3 si es necesario
-                                nueva_fecha_limite = fecha_ahora + timedelta(days=dias_extra)
-                                
-                                # 3. Actualizamos silenciosamente la fecha límite del pedido maestro
-                                c.execute("UPDATE pedidos SET fecha_limite = %s WHERE id = %s", (nueva_fecha_limite, int(id_c)))
-                                
-                                conn.commit(); conn.close()
-                                
-                                st.success(f"✅ ¡Entrega parcial guardada! El plazo se ha renovado por {dias_extra} días más.")
-                                st.rerun()
+                                if kilos_parcial == 0.0 or kilos_parcial == 0:
+                                    # ---> NUEVA LÓGICA PARA KILOS 0 (RENOVACIÓN DE FECHAS) <---
+                                    # Actualizamos la fecha_recepcion a hoy y borramos la fecha_limite
+                                    query_update = """
+                                        UPDATE pedidos 
+                                        SET fecha_recepcion = %s, fecha_limite = NULL 
+                                        WHERE id = %s
+                                    """
+                                    c.execute(query_update, (fecha_ahora.strftime('%Y-%m-%d %H:%M:%S'), int(id_c)))
+                                    conn.commit(); conn.close()
+                                    
+                                    st.success("✅ ¡Entrega parcial guardada! Plazo de entrega renovado. La nueva fecha límite se calculará a partir de hoy.")
+                                    st.rerun()
+                                else:
+                                    # ---> LÓGICA ORIGINAL PARA KILOS > 0 <---
+                                    # 2. EL EFECTO RELOJ DE ARENA: Calculamos nueva fecha límite (Hoy + 5 días)
+                                    dias_extra = 5 
+                                    nueva_fecha_limite = fecha_ahora + timedelta(days=dias_extra)
+                                    
+                                    # 3. Actualizamos silenciosamente la fecha límite del pedido maestro
+                                    c.execute("UPDATE pedidos SET fecha_limite = %s WHERE id = %s", (nueva_fecha_limite, int(id_c)))
+                                    conn.commit(); conn.close()
+                                    
+                                    st.success(f"✅ ¡Entrega parcial guardada! El plazo se ha renovado por {dias_extra} días más.")
+                                    st.rerun()
                             else:
                                 st.warning("⚠️ Ingresa los kilos y un comentario para poder registrar.")
 
