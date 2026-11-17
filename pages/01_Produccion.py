@@ -2788,7 +2788,7 @@ with tab5:
                 # Renderizado final del gráfico original
                 st.altair_chart(bars + text, use_container_width=True)
 
-                # -------------------------------------------------------------------------
+        # -------------------------------------------------------------------------
         # 📊 3. NUEVA SECCIÓN: KPI DE ENTREGAS A TIEMPO Y DEMORA EN RETIRO
         # -------------------------------------------------------------------------
         st.markdown("---")
@@ -2799,43 +2799,81 @@ with tab5:
             if col_fecha in df_all_ped.columns:
                 df_all_ped[col_fecha] = pd.to_datetime(df_all_ped[col_fecha], errors='coerce').dt.date
 
-        # 2. KPI: Entregas a Tiempo (Solo evaluamos los pedidos que ya están Terminados)
+        # 2. KPI: Entregas a Tiempo (Evaluar entregas reales)
         df_terminados_kpi = df_all_ped[df_all_ped['estado'] == 'Terminado'].copy()
         
         if not df_terminados_kpi.empty:
-            # Determinamos si fue A Tiempo o Atrasado
-            df_terminados_kpi['Entrega'] = df_terminados_kpi.apply(
-                lambda row: 'A Tiempo' if pd.notnull(row.get('fecha_termino')) and pd.notnull(row.get('fecha_limite')) and row['fecha_termino'] <= row['fecha_limite'] else 'Atrasado', 
-                axis=1
-            )
-            
-            # 3. KPI: Tiempo de Retiro (Solo para los que ya fueron Despachados)
-            df_despachados_kpi = df_terminados_kpi[df_terminados_kpi.get('estado_despacho', '') == 'Despachado'].copy()
-            promedio_retiro = None
-            if not df_despachados_kpi.empty:
-                df_despachados_kpi['Dias_Retiro'] = (pd.to_datetime(df_despachados_kpi['fecha_despacho']) - pd.to_datetime(df_despachados_kpi['fecha_termino'])).dt.days
-                # Filtramos valores negativos por si hay errores de tipeo en las fechas
-                df_despachados_kpi = df_despachados_kpi[df_despachados_kpi['Dias_Retiro'] >= 0]
-                promedio_retiro = df_despachados_kpi['Dias_Retiro'].mean()
+            # Excluimos del cálculo de atrasos aquellos pedidos que tienen 0 kg reales 
+            # (asumiendo que son los cierres parciales 'falsos' para mover fechas)
+            df_kpi_evaluacion = df_terminados_kpi[df_terminados_kpi['kg_reales'] > 0].copy()
 
-            # 4. Dibujar la Interfaz (Gráfico a la izquierda, Métrica a la derecha)
-            col_kpi1, col_kpi2 = st.columns([2, 1])
-            
-            with col_kpi1:
-                import plotly.express as px
-                df_grafico_tiempo = df_terminados_kpi.groupby(['obra_codigo', 'Entrega']).size().reset_index(name='Cantidad')
-                fig_tiempo = px.bar(df_grafico_tiempo, x='obra_codigo', y='Cantidad', color='Entrega',
-                                    title='Entregas a Tiempo vs Atrasadas por EDP',
-                                    color_discrete_map={'A Tiempo': '#28a745', 'Atrasado': '#dc3545'},
-                                    barmode='group')
-                st.plotly_chart(fig_tiempo, use_container_width=True)
+            if not df_kpi_evaluacion.empty:
+                # Determinamos si fue A Tiempo o Atrasado
+                df_kpi_evaluacion['Entrega'] = df_kpi_evaluacion.apply(
+                    lambda row: 'A Tiempo' if pd.notnull(row.get('fecha_termino')) and pd.notnull(row.get('fecha_limite')) and row['fecha_termino'] <= row['fecha_limite'] else 'Atrasado', 
+                    axis=1
+                )
                 
-            with col_kpi2:
-                st.markdown("<br><br>", unsafe_allow_html=True)
-                if pd.notnull(promedio_retiro):
-                    st.metric(label="Promedio de Demora en Retiro", value=f"{promedio_retiro:.1f} Días")
+                # 3. KPI: Tiempo de Retiro
+                df_despachados_kpi = df_kpi_evaluacion[df_kpi_evaluacion.get('estado_despacho', '') == 'Despachado'].copy()
+                promedio_retiro = None
+                if not df_despachados_kpi.empty:
+                    df_despachados_kpi['Dias_Retiro'] = (pd.to_datetime(df_despachados_kpi['fecha_despacho']) - pd.to_datetime(df_despachados_kpi['fecha_termino'])).dt.days
+                    df_despachados_kpi = df_despachados_kpi[df_despachados_kpi['Dias_Retiro'] >= 0]
+                    promedio_retiro = df_despachados_kpi['Dias_Retiro'].mean()
+
+                # 4. Dibujar la Interfaz Superior (Gráfico y Métrica)
+                col_kpi1, col_kpi2 = st.columns([2, 1])
+                
+                with col_kpi1:
+                    import plotly.express as px
+                    df_grafico_tiempo = df_kpi_evaluacion.groupby(['obra_codigo', 'Entrega']).size().reset_index(name='Cantidad')
+                    fig_tiempo = px.bar(df_grafico_tiempo, x='obra_codigo', y='Cantidad', color='Entrega',
+                                        title='Entregas a Tiempo vs Atrasadas por EDP',
+                                        color_discrete_map={'A Tiempo': '#28a745', 'Atrasado': '#dc3545'},
+                                        barmode='group')
+                    st.plotly_chart(fig_tiempo, use_container_width=True)
+                    
+                with col_kpi2:
+                    st.markdown("<br><br>", unsafe_allow_html=True)
+                    if pd.notnull(promedio_retiro):
+                        st.metric(label="Promedio de Demora en Retiro", value=f"{promedio_retiro:.1f} Días")
+                    else:
+                        st.metric(label="Promedio de Demora en Retiro", value="0 Días")
+                    st.caption("Calculado desde que el taller avisa el término de la fabricación hasta que el solicitante lo retira físicamente.")
+
+                # 5. DETALLE DE PEDIDOS ATRASADOS (Con filtro por obra)
+                st.markdown("##### 🚨 Detalle de Pedidos Atrasados")
+                
+                # Filtramos solo los atrasados
+                df_atrasados = df_kpi_evaluacion[df_kpi_evaluacion['Entrega'] == 'Atrasado'].copy()
+                
+                if not df_atrasados.empty:
+                    # Obtenemos la lista única de obras que tienen atrasos para el menú
+                    lista_obras_atrasadas = ["Todas las Obras"] + list(df_atrasados['obra_codigo'].unique())
+                    
+                    filtro_obra = st.selectbox("Filtrar por Obra:", lista_obras_atrasadas, key="filtro_obras_kpi")
+                    
+                    # Aplicamos el filtro si no se seleccionó "Todas"
+                    if filtro_obra != "Todas las Obras":
+                        df_atrasados = df_atrasados[df_atrasados['obra_codigo'] == filtro_obra]
+                    
+                    # Preparamos las columnas a mostrar
+                    columnas_mostrar = ['num_pedido', 'obra_codigo', 'fecha_recepcion', 'fecha_limite', 'fecha_termino', 'kg_reales']
+                    # Verificamos que existan en el df para no arrojar error
+                    columnas_reales = [c for c in columnas_mostrar if c in df_atrasados.columns]
+                    
+                    df_mostrar = df_atrasados[columnas_reales].rename(columns={
+                        'num_pedido': 'OT',
+                        'obra_codigo': 'Obra (EDP)',
+                        'fecha_recepcion': 'F. Ingreso',
+                        'fecha_limite': 'F. Límite',
+                        'fecha_termino': 'F. Cierre Real',
+                        'kg_reales': 'Kg Fabricados'
+                    })
+                    
+                    st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
                 else:
-                    st.metric(label="Promedio de Demora en Retiro", value="0 Días")
-                st.caption("Calculado desde que el taller avisa el término de la fabricación hasta que el solicitante lo retira físicamente.")
+                    st.success("¡Excelente! No hay registros de pedidos atrasados bajo los parámetros actuales.")
         else:
             st.info("No hay suficientes pedidos terminados para calcular el desempeño de entregas.")
