@@ -2849,25 +2849,44 @@ with tab5:
                     df_despachados_kpi = df_despachados_kpi[df_despachados_kpi['Dias_Retiro'] >= 0]
                     promedio_retiro = df_despachados_kpi['Dias_Retiro'].mean()
 
-                # 4. Dibujar la Interfaz Superior (Filtro, Tabla y Métrica)
+                # 4. Dibujar la Interfaz Superior (Filtro, Gráfico de Torta y Métrica)
                 
-                # --- NUEVO: Filtro General por Obra ---
+                # --- Filtro General por Obra ---
                 lista_obras = ["Todas las Obras"] + list(df_kpi_evaluacion['obra_codigo'].unique())
                 filtro_obra_general = st.selectbox("Filtrar por Obra:", lista_obras, key="filtro_general_kpi")
                 
-                # Aplicamos el filtro al dataframe
+                # Aplicamos el filtro al dataframe principal del KPI
                 if filtro_obra_general != "Todas las Obras":
                     df_kpi_evaluacion = df_kpi_evaluacion[df_kpi_evaluacion['obra_codigo'] == filtro_obra_general]
                 
                 col_kpi1, col_kpi2 = st.columns([2, 1])
                 
                 with col_kpi1:
-                    # --- NUEVO: Tabla de Atrasos en lugar del Gráfico ---
-                    st.markdown("##### 🚨 Detalle de Pedidos Atrasados")
+                    # --- NUEVO: Gráfico de Torta ---
+                    import plotly.express as px
+                    
+                    if not df_kpi_evaluacion.empty:
+                        # Agrupamos los datos filtrados para contar cuántos están A Tiempo y cuántos Atrasados
+                        df_grafico_torta = df_kpi_evaluacion.groupby('Entrega').size().reset_index(name='Cantidad')
+                        
+                        # Creamos el gráfico de torta (pie chart)
+                        fig_torta = px.pie(df_grafico_torta, values='Cantidad', names='Entrega',
+                                            title=f'Estado de Entregas - {filtro_obra_general}',
+                                            color='Entrega',
+                                            color_discrete_map={'A Tiempo': '#28a745', 'Atrasado': '#dc3545'},
+                                            hole=0.3) # Agrega un agujero en el centro (estilo dona) opcional
+                        
+                        # Forzamos a que muestre porcentajes claros
+                        fig_torta.update_traces(textinfo='percent+label')
+                        st.plotly_chart(fig_torta, use_container_width=True)
+                    else:
+                        st.info("No hay datos suficientes para generar el gráfico con el filtro seleccionado.")
+
+                    # --- DETALLE DE ATRASOS (Se mantiene la tabla debajo del gráfico) ---
                     df_atrasados = df_kpi_evaluacion[df_kpi_evaluacion['Entrega'] == 'Atrasado'].copy()
                     
                     if not df_atrasados.empty:
-                        # Preparamos las columnas a mostrar, incluyendo 'kg_reales'
+                        st.markdown("##### 🚨 Detalle de Pedidos Atrasados")
                         columnas_mostrar = ['num_pedido', 'obra_codigo', 'fecha_limite_kpi', 'fecha_termino', 'kg_reales']
                         columnas_reales = [c for c in columnas_mostrar if c in df_atrasados.columns]
                         
@@ -2881,15 +2900,20 @@ with tab5:
                         
                         st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
                     else:
-                         st.success(f"¡Excelente! No hay registros de pedidos atrasados en {filtro_obra_general if filtro_obra_general != 'Todas las Obras' else 'ninguna obra'}.")
+                         st.success(f"¡Excelente! 100% de entregas a tiempo en {filtro_obra_general if filtro_obra_general != 'Todas las Obras' else 'todas las obras'}.")
                     
                 with col_kpi2:
                     st.markdown("<br><br>", unsafe_allow_html=True)
-                    if pd.notnull(promedio_retiro):
-                        st.metric(label="Promedio de Demora en Retiro", value=f"{promedio_retiro:.1f} Días")
+                    # Recalculamos el promedio de retiro basado en el filtro actual
+                    df_despachados_filtrado = df_kpi_evaluacion[df_kpi_evaluacion.get('estado_despacho', '') == 'Despachado'].copy()
+                    promedio_retiro_filtrado = None
+                    if not df_despachados_filtrado.empty:
+                        df_despachados_filtrado['Dias_Retiro'] = (pd.to_datetime(df_despachados_filtrado['fecha_despacho']) - pd.to_datetime(df_despachados_filtrado['fecha_termino'])).dt.days
+                        df_despachados_filtrado = df_despachados_filtrado[df_despachados_filtrado['Dias_Retiro'] >= 0]
+                        promedio_retiro_filtrado = df_despachados_filtrado['Dias_Retiro'].mean()
+
+                    if pd.notnull(promedio_retiro_filtrado):
+                        st.metric(label="Promedio de Demora en Retiro", value=f"{promedio_retiro_filtrado:.1f} Días")
                     else:
                         st.metric(label="Promedio de Demora en Retiro", value="0 Días")
                     st.caption("Calculado desde que el taller avisa el término de la fabricación hasta que el solicitante lo retira físicamente.")
-
-        else:
-            st.info("No hay suficientes pedidos terminados para calcular el desempeño de entregas.")
