@@ -309,8 +309,8 @@ USUARIOS = {
             "clave": "1234", "rol": "cliente", "nombre": "Cristian Bustos",
             "correo": "cbustos@termofrio.cl",
             "tf": ["CC02"],
-            "ceco": ["4-04-002"],
-            "obra": ["EXTRAS 4-04-002"]
+            "ceco": ["4-02-002"],
+            "obra": ["EXTRAS 4-02-002"]
     },
     "jguzman": {
             "clave": "1234", "rol": "cliente", "nombre": "Joel Guzman",
