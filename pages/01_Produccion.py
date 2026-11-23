@@ -1569,6 +1569,7 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                         if st.form_submit_button("Guardar Salida Parcial"):
                             if kilos_parcial >= 0 and comentario_parcial:
                                 from datetime import timedelta, datetime
+                                from pandas.tseries.offsets import BusinessDay
                                 
                                 conn = get_connection(); c = conn.cursor()
                                 fecha_ahora = datetime.now()
@@ -1578,25 +1579,27 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                                 
                                 if kilos_parcial == 0.0 or kilos_parcial == 0:
                                     # ---> NUEVA LÓGICA PARA KILOS 0 (RENOVACIÓN DE FECHAS) <---
-                                    # Actualizamos la fecha_recepcion a hoy y borramos la fecha_limite
+                                    # Calculamos 5 días hábiles desde hoy para que el semáforo no muestre "Error"
+                                    nueva_fecha_limite = (pd.Timestamp(fecha_ahora) + BusinessDay(5)).date()
+                                    
                                     query_update = """
                                         UPDATE pedidos 
-                                        SET fecha_recepcion = %s, fecha_limite = NULL 
+                                        SET fecha_recepcion = %s, fecha_limite = %s 
                                         WHERE id = %s
                                     """
-                                    c.execute(query_update, (fecha_ahora.strftime('%Y-%m-%d %H:%M:%S'), int(id_c)))
+                                    c.execute(query_update, (fecha_ahora.strftime('%Y-%m-%d %H:%M:%S'), str(nueva_fecha_limite), int(id_c)))
                                     conn.commit(); conn.close()
                                     
-                                    st.success("✅ ¡Entrega parcial guardada! Plazo de entrega renovado. La nueva fecha límite se calculará a partir de hoy.")
+                                    st.success(f"✅ ¡Plazo renovado! Nueva fecha límite: {nueva_fecha_limite}")
                                     st.rerun()
                                 else:
                                     # ---> LÓGICA ORIGINAL PARA KILOS > 0 <---
                                     # 2. EL EFECTO RELOJ DE ARENA: Calculamos nueva fecha límite (Hoy + 5 días)
                                     dias_extra = 5 
-                                    nueva_fecha_limite = fecha_ahora + timedelta(days=dias_extra)
+                                    nueva_fecha_limite = (fecha_ahora + timedelta(days=dias_extra)).date()
                                     
                                     # 3. Actualizamos silenciosamente la fecha límite del pedido maestro
-                                    c.execute("UPDATE pedidos SET fecha_limite = %s WHERE id = %s", (nueva_fecha_limite, int(id_c)))
+                                    c.execute("UPDATE pedidos SET fecha_limite = %s WHERE id = %s", (str(nueva_fecha_limite), int(id_c)))
                                     conn.commit(); conn.close()
                                     
                                     st.success(f"✅ ¡Entrega parcial guardada! El plazo se ha renovado por {dias_extra} días más.")
