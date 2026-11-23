@@ -981,6 +981,10 @@ with t_manual:
                         
                         texto_final_medidas = " | ".join(partes_str)
                         
+                        def a_float(val):
+                            try: return float(str(val).replace(',', '.').strip())
+                            except: return 0.0
+
                         st.session_state.carrito_admin.append({
                             "item_num": len(st.session_state.carrito_admin) + 1,
                             "Descripción": desc_m.strip(),
@@ -992,7 +996,13 @@ with t_manual:
                             "unidad_cobro": un,
                             "precio_unitario": pu,
                             "total_linea": tot,
-                            "origen_precio": ori
+                            "origen_precio": ori,
+                            # --- NUEVOS CAMPOS PARA EL CÁLCULO DE MONTAJE ---
+                            "tipo": desc_m.strip(),
+                            "ancho_cm": a_float(l_a),
+                            "alto_cm": a_float(l_b),
+                            "largo_cm": a_float(l_h),
+                            "cantidad": cant_m
                         })
                         st.success(f"✅ Pieza agregada exitosamente.")
                         st.rerun()
@@ -1018,6 +1028,28 @@ with t_manual:
             peso_total_carrito = df_carrito['Kg'].sum()
             neto_total_carrito = df_carrito['total_linea'].sum()
             st.markdown(f"### ⚖️ Peso Estimado Total: {peso_total_carrito:,.2f} Kg")
+
+            # --- NUEVO: CÁLCULO DE MATERIALES DE MONTAJE SMACNA ---
+            resultado_montaje = calcular_materiales_montaje(st.session_state.carrito_admin)
+            with st.expander("📦 Materiales de Montaje Estimados (Kit Terreno SMACNA)", expanded=True):
+                res = resultado_montaje["resumen_linea"]
+                st.info(
+                    f"**Línea de Montaje:** {res['total_piezas']} piezas en total | "
+                    f"{res['juntas_estimadas']} juntas TDF de acople | "
+                    f"{res['trapecios_soporte']} trapecios de soportería estimados."
+                )
+                df_materiales = pd.DataFrame(resultado_montaje["materiales"])
+                st.dataframe(
+                    df_materiales,
+                    column_config={
+                        "item": "Material",
+                        "cantidad": st.column_config.NumberColumn("Cantidad", format="%.1f"),
+                        "unidad": "Unidad",
+                        "especificacion": "Especificación Técnica / Norma"
+                    },
+                    use_container_width=True,
+                    hide_index=True
+                )
 
             st.markdown("#### 📝 Información Adicional")
             comentarios_manual = st.text_area("Comentarios u Observaciones del Pedido", placeholder="Ej: Entregar por acceso lateral...", key="obs_admin_bottom")
