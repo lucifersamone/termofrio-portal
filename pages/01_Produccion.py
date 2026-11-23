@@ -613,6 +613,106 @@ def procesar_pedido(archivo, df_precios, material_default):
     
     df_result = pd.DataFrame(items)
     return enc, df_result
+import math
+from typing import List, Dict, Any
+
+def calcular_materiales_montaje(
+    items_pedido: List[Dict[str, Any]], 
+    l_tramo_recto_cm: float = 120.0,
+    espaciado_soporte_m: float = 2.5
+) -> Dict[str, Any]:
+    total_piezas = 0
+    total_bocas_tdf = 0
+    longitud_total_rectos_m = 0.0
+    accesorios_pesados = 0
+    perimetro_acumulado_cm = 0.0
+    grapas_totales = 0
+
+    for item in items_pedido:
+        tipo = str(item.get('tipo', '')).upper().strip()
+        cant = int(item.get('cantidad', 1))
+        ancho = float(item.get('ancho_cm', 0.0))
+        alto = float(item.get('alto_cm', 0.0))
+        largo = float(item.get('largo_cm', 0.0))
+        
+        perimetro_boca_cm = 2.0 * (ancho + alto)
+        
+        if 'RECT' in tipo:
+            tramos = math.ceil(largo / l_tramo_recto_cm) if largo > 0 else 1
+            piezas_reales = tramos * cant
+            total_piezas += piezas_reales
+            total_bocas_tdf += piezas_reales * 2
+            longitud_total_rectos_m += (largo / 100.0) * cant
+            bocas_item = piezas_reales * 2
+            perimetro_acumulado_cm += perimetro_boca_cm * piezas_reales
+        elif any(k in tipo for k in ['PANTALON', 'BIFURCACION', 'DERIVACION', 'TE']):
+            total_piezas += cant
+            total_bocas_tdf += cant * 3
+            accesorios_pesados += cant
+            bocas_item = cant * 3
+            perimetro_acumulado_cm += perimetro_boca_cm * cant
+        elif 'TAPA' in tipo:
+            total_piezas += cant
+            total_bocas_tdf += cant * 1
+            bocas_item = cant * 1
+            perimetro_acumulado_cm += perimetro_boca_cm * cant
+        else:
+            total_piezas += cant
+            total_bocas_tdf += cant * 2
+            accesorios_pesados += cant
+            bocas_item = cant * 2
+            perimetro_acumulado_cm += perimetro_boca_cm * cant
+
+        def clips_por_lado(lado_cm: float) -> int:
+            if lado_cm <= 40.0:
+                return 1
+            elif lado_cm <= 80.0:
+                return 2
+            else:
+                return math.ceil(lado_cm / 30.0)
+        
+        grapas_por_boca = 2 * (clips_por_lado(ancho) + clips_por_lado(alto))
+        grapas_totales += grapas_por_boca * (bocas_item // 2)
+
+    juntas_estimadas = max(1, total_piezas - 1) if total_piezas > 1 else 1
+    esquineros_totales = juntas_estimadas * 8
+    pernos_totales = juntas_estimadas * 4
+    
+    if total_piezas > 0 and perimetro_acumulado_cm > 0:
+        perimetro_promedio_m = (perimetro_acumulado_cm / total_piezas) / 100.0
+    else:
+        perimetro_promedio_m = 1.6
+    
+    metros_gasket = round(juntas_estimadas * perimetro_promedio_m * 1.10, 1)
+
+    tramos_soporte_rectos = math.ceil(longitud_total_rectos_m / espaciado_soporte_m)
+    trapecios_totales = max(2, tramos_soporte_rectos + accesorios_pesados)
+
+    tacos_losa = trapecios_totales * 2
+    varillas_roscadas_m = trapecios_totales * 2
+    tuercas_golillas = trapecios_totales * 4
+
+    return {
+        "resumen_linea": {
+            "total_piezas": total_piezas,
+            "juntas_estimadas": juntas_estimadas,
+            "bocas_tdf": total_bocas_tdf,
+            "longitud_rectos_m": round(longitud_total_rectos_m, 2),
+            "trapecios_soporte": trapecios_totales
+        },
+        "materiales": [
+            {"item": "Esquineros / Tacos TDF", "cantidad": esquineros_totales, "unidad": "un", "especificacion": "Acero galvanizado estándar T-25b (8 por junta)"},
+            {"item": "Pernos Coche 3/8\" x 1\" c/tuerca", "cantidad": pernos_totales, "unidad": "un", "especificacion": "Grado 2 galvanizado (4 por junta de esquinas)"},
+            {"item": "Grapas / Clips TDF (Cleats)", "cantidad": max(grapas_totales, juntas_estimadas * 4), "unidad": "un", "especificacion": "L=150 mm (según peralte y ancho SMACNA)"},
+            {"item": "Cinta Sellante (Gasket)", "cantidad": metros_gasket, "unidad": "m", "especificacion": "Espuma celda cerrada / Butilo 3/16\" x 1/2\""},
+            {"item": "Tacos de Expansión (Drop-in 3/8\")", "cantidad": tacos_losa, "unidad": "un", "especificacion": "Fijación a losa de hormigón para trapecio"},
+            {"item": "Varilla Roscada 3/8\"", "cantidad": varillas_roscadas_m, "unidad": "un (tiras 1m)", "especificacion": "ASTM A36 galvanizada (2 por soporte trapecio)"},
+            {"item": "Tuercas y Golillas 3/8\"", "cantidad": tuercas_golillas, "unidad": "juegos", "especificacion": "Nivelación y fijación trapecios"}
+        ]
+    }
+
+
+
 
 # --- INTERFAZ PRINCIPAL ---
 st.title("📦 Producción - Termofrio SPA")
