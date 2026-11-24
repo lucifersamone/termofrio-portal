@@ -18,6 +18,42 @@ from PIL import Image
 import base64
 import os
 
+def calcular_espesor_por_presion(max_mm: float, presion_sel: str) -> float:
+    """Devuelve solo el espesor nominal (mm) según Tabla 4P y la presión seleccionada."""
+    if "125" in presion_sel:
+        if max_mm <= 700: return 0.5
+        elif max_mm <= 1500: return 0.6
+        elif max_mm <= 2000: return 0.8
+        elif max_mm <= 2400: return 1.0
+        else: return 1.5
+    elif "250" in presion_sel:
+        if max_mm <= 300: return 0.5
+        elif max_mm <= 900: return 0.6
+        elif max_mm <= 1800: return 0.8
+        elif max_mm <= 2400: return 1.0
+        else: return 1.5
+    elif "500" in presion_sel:
+        if max_mm <= 300: return 0.5
+        elif max_mm <= 700: return 0.6
+        elif max_mm <= 1500: return 0.8
+        elif max_mm <= 2400: return 1.0
+        else: return 1.5
+    elif "750" in presion_sel:
+        if max_mm <= 300: return 0.5
+        elif max_mm <= 450: return 0.6
+        elif max_mm <= 1200: return 0.8
+        elif max_mm <= 2400: return 1.0
+        else: return 1.5
+    elif "1000" in presion_sel:
+        if max_mm <= 450: return 0.6
+        elif max_mm <= 750: return 0.8
+        elif max_mm <= 1800: return 1.0
+        else: return 1.5
+    else: # + 1500 Pa
+        if max_mm <= 650: return 0.8
+        elif max_mm <= 1500: return 1.0
+        else: return 1.5
+
 # ==========================================================
 # --- FUNCIÓN DE LIMPIEZA DE TEXTO (AGREGAR AQUÍ) ---
 # ==========================================================
@@ -841,6 +877,17 @@ with t_manual:
             st.markdown("<br>", unsafe_allow_html=True) 
             aislacion_manual = st.checkbox("🧊 Incluir Aislación Interior", key="chk_aisl_admin")
             forro_metalico_manual = st.checkbox("🛡️ Incluir Forro Metálico", key="chk_forro_admin")
+        OPCIONES_PRESION = [
+            "± 125 Pa (B1)", "± 250 Pa (B2)", "± 500 Pa (B3)",
+            "± 750 Pa (M1)", "+ 1000 Pa (M2)", "+ 1500 Pa (M3)"
+        ]
+        presion_sel = st.radio(
+            "💨 Presión de Trabajo del Equipo (define el espesor de plancha):",
+            OPCIONES_PRESION,
+            index=0,
+            horizontal=True,
+            key="pres_radio_cli"
+        )
 
         st.divider()
         st.markdown("#### 🛒 1. Agregar Piezas al Pedido")
@@ -897,15 +944,13 @@ with t_manual:
                     except: pass
             
             max_mm = max_dim_cm * 10
-            esp_smacna = 0.5
-            if max_mm > 1800: esp_smacna = 1.0
-            elif max_mm > 1300: esp_smacna = 0.8
-            elif max_mm > 1000: esp_smacna = 0.6
+            esp_smacna = calcular_espesor_por_presion(max_mm, presion_sel)
 
             cw1, cw2, cw3 = st.columns(3)
             with cw1:
-                esp_m = st.number_input("Espesor (mm)", min_value=0.0, value=float(esp_smacna), step=0.1, key="esp_m")
-                st.caption(f"📏 Sugerido por Norma SMACNA (250 Pa): {esp_smacna} mm")
+                key_esp = f"esp_dyn_admin_{desc_m}_{esp_smacna}_{presion_sel}"
+                esp_m = st.number_input("Espesor (mm)", min_value=0.0, value=float(esp_smacna), step=0.1, key=key_esp)
+                st.caption(f"📏 Sugerido para {presion_sel}: **{esp_smacna} mm**")
                 
             with cw2:
                 peso_teorico = calcular_peso_teorico(desc_m, l_a, l_b, l_c, l_d, l_h, diam, diam2, esp_m)
@@ -1002,8 +1047,11 @@ with t_manual:
                             "ancho_cm": a_float(l_a),
                             "alto_cm": a_float(l_b),
                             "largo_cm": a_float(l_h),
-                            "cantidad": cant_m
+                            "cantidad": cant_m,
+                            "union_entrada": u_ent,
+                            "union_salida": u_sal
                         })
+    
                         st.success(f"✅ Pieza agregada exitosamente.")
                         st.rerun()
                             
