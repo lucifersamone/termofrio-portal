@@ -20,36 +20,36 @@ import os
 
 def calcular_espesor_por_presion(max_mm: float, presion_sel: str) -> float:
     """Devuelve solo el espesor nominal (mm) según Tabla 4P y la presión seleccionada."""
-    if "125" in presion_sel:
+    if "(B1)" in presion_sel:
         if max_mm <= 700: return 0.5
         elif max_mm <= 1500: return 0.6
         elif max_mm <= 2000: return 0.8
         elif max_mm <= 2400: return 1.0
         else: return 1.5
-    elif "250" in presion_sel:
+    elif "(B2)" in presion_sel:
         if max_mm <= 300: return 0.5
         elif max_mm <= 900: return 0.6
         elif max_mm <= 1800: return 0.8
         elif max_mm <= 2400: return 1.0
         else: return 1.5
-    elif "500" in presion_sel:
+    elif "(B3)" in presion_sel:
         if max_mm <= 300: return 0.5
         elif max_mm <= 700: return 0.6
         elif max_mm <= 1500: return 0.8
         elif max_mm <= 2400: return 1.0
         else: return 1.5
-    elif "750" in presion_sel:
+    elif "(M1)" in presion_sel:
         if max_mm <= 300: return 0.5
         elif max_mm <= 450: return 0.6
         elif max_mm <= 1200: return 0.8
         elif max_mm <= 2400: return 1.0
         else: return 1.5
-    elif "1000" in presion_sel:
+    elif "(M2)" in presion_sel:
         if max_mm <= 450: return 0.6
         elif max_mm <= 750: return 0.8
         elif max_mm <= 1800: return 1.0
         else: return 1.5
-    else: # + 1500 Pa
+    else:  # + 1500 Pa (M3)
         if max_mm <= 650: return 0.8
         elif max_mm <= 1500: return 1.0
         else: return 1.5
