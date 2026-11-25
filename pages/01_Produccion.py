@@ -2213,7 +2213,7 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                     # 📬 SECCIÓN DE CORREO (Renombrada para no chocar con los PASOS)
                     st.markdown("---")
                     st.markdown("#### 📬 Enviar por Correo")
-                    
+                    #
                     correo_destino = ""
                     quien_envia = str(st.session_state.get('pdf_solic', '')).strip()
                     
