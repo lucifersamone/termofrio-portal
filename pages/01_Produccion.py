@@ -2197,7 +2197,7 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                 num_ped = str(st.session_state.get('pdf_num', '')).strip().upper().replace("OT-", "").replace("OT", "")
                 obra_ped = str(st.session_state.get('pdf_obra', '')).replace('/', '-').replace('\\', '-')
                 nombre_archivo_final = f"Pedido OT-{num_ped} {obra_ped}"
-                
+
                 with open(st.session_state.pdf_tmp, "rb") as f:
                     if st.session_state.get("es_excel", False):
         
@@ -2215,7 +2215,7 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                     # 📬 SECCIÓN DE CORREO (Renombrada para no chocar con los PASOS)
                     st.markdown("---")
                     st.markdown("#### 📬 Enviar por Correo")
-                    #
+                    
                     correo_destino = ""
                     quien_envia = str(st.session_state.get('pdf_solic', '')).strip()
                     
