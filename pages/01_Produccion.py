@@ -2190,15 +2190,17 @@ Agradecemos su comprensión.\nDepartamento de Producción - Termofrio SPA"""
                     st.markdown("<br>", unsafe_allow_html=True)
                     
                     # 🏷️ ARMADO DEL NOMBRE DINÁMICO (Ej: Pedido OT-85 TF-13655 SANTIAGO...)
-                num_ped = str(st.session_state.get('pdf_num', '')).strip().upper().replace("OT-", "").replace("OT", "")
-                obra_ped = str(st.session_state.get('pdf_obra', '')).replace('/', '-').replace('\\', '-')
-                nombre_archivo_final = f"Pedido OT-{num_ped} {obra_ped}"
 
                     # 📥 SECCIÓN DE DESCARGA (Inteligente para PDF o HTML con escudo protector)
             if 'pdf_tmp' in st.session_state and st.session_state.pdf_tmp and os.path.exists(st.session_state.pdf_tmp):
+                ext = os.path.splitext(st.session_state.pdf_tmp)[1]
+                num_ped = str(st.session_state.get('pdf_num', '')).strip().upper().replace("OT-", "").replace("OT", "")
+                obra_ped = str(st.session_state.get('pdf_obra', '')).replace('/', '-').replace('\\', '-')
+                nombre_archivo_final = f"Pedido OT-{num_ped} {obra_ped}"
+                
                 with open(st.session_state.pdf_tmp, "rb") as f:
                     if st.session_state.get("es_excel", False):
-                        ext = os.path.splitext(st.session_state.pdf_tmp)[1]
+        
                         if not ext == ".xlsm":
                             st.download_button("📄 Descargar PDF Oficial de Excel", f, file_name=f"{nombre_archivo_final}{ext}", key="btn_dl_excel", type="primary")
                     else:
