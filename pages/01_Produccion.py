@@ -1216,7 +1216,22 @@ with tab2:
         cols_view = ['Alerta', 'num_pedido', 'tf', 'obra_codigo', 'quien_envia', 'nivel_urgencia', 'fecha_recepcion', 'fecha_limite', 'kg_estimados', 'kg_reales', 'estado']
         columnas_finales = [c for c in cols_view if c in dfv.columns]
         st.dataframe(dfv[columnas_finales], use_container_width=True, hide_index=True)
-        
+        # --- LEYENDA DE KG ESTIMADOS Y PENDIENTES PARA COMPRA DE ACERO ---
+        if not dfv.empty:
+            kg_est_col = pd.to_numeric(dfv['kg_estimados'], errors='coerce').fillna(0.0)
+            kg_real_col = pd.to_numeric(dfv['kg_reales'], errors='coerce').fillna(0.0)
+
+            mask_pend = dfv['estado'].astype(str).str.strip().str.lower() == 'pendiente'
+
+            total_kg_estimados = kg_est_col.sum()
+            kg_pendientes_compra = (kg_est_col[mask_pend] - kg_real_col[mask_pend]).clip(lower=0).sum()
+            cant_pendientes = int(mask_pend.sum())
+
+            st.info(
+                f"📊 **Resumen de Acero (según tabla actual):** "
+                f"**Total Kg Estimados:** {total_kg_estimados:,.1f} Kg  |  "
+                f"**Kg Pendientes por Fabricar:** {kg_pendientes_compra:,.1f} Kg ({cant_pendientes} OTs pendientes)"
+            )
         fila_ped = None
         obs_txt = ""
         men_txt = ""
